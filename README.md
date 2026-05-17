@@ -146,4 +146,4 @@ MIT. See `LICENSE`.
 
 ## Maintainer
 
-Michael Lowcher · mlowcher@hotmail.com · https://github.com/mlowcher61
+Mark Lowcher · mlowcher@redhat.com · https://github.com/mlowcher61
