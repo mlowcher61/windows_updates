@@ -1,0 +1,7 @@
+---
+require_approval: true
+install_serial: "20%"
+install_categories:
+  - SecurityUpdates
+  - CriticalUpdates
+scan_only: false

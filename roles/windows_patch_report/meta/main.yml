@@ -1,0 +1,8 @@
+---
+galaxy_info:
+  role_name: windows_patch_report
+  author: mlowcher61
+  description: Aggregate patch facts and produce HTML/CSV posture report
+  license: MIT
+  min_ansible_version: "2.15"
+dependencies: []

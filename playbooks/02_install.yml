@@ -1,0 +1,11 @@
+---
+# Windows Patch — Install
+# Applies updates, reboots if required, runs a verification scan, records results.
+# Honours per-group categories and serial batch size to prevent reboot storms.
+- name: Install Windows updates on target hosts
+  hosts: "{{ target_group | default('windows_servers') }}"
+  gather_facts: true
+  serial: "{{ install_serial | default('20%') }}"
+  any_errors_fatal: false
+  roles:
+    - role: windows_patch_install

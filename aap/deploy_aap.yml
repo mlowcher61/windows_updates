@@ -1,0 +1,11 @@
+---
+# Deploys all AAP objects for this solution in order.
+# Required extra-vars: aap_hostname, aap_username, aap_password
+- import_playbook: 00_credential_types.yml
+- import_playbook: 01_credentials.yml
+- import_playbook: 02_project.yml
+- import_playbook: 03_inventory_sources.yml
+- import_playbook: 04_job_templates.yml
+- import_playbook: 05_workflow_template.yml
+- import_playbook: 06_notification_templates.yml
+- import_playbook: 07_schedules.yml

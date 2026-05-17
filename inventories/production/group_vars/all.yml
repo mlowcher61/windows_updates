@@ -1,0 +1,7 @@
+---
+# Connection defaults — actual creds come from AAP windows_winrm_kerberos credential.
+ansible_connection: winrm
+ansible_port: 5986
+ansible_winrm_transport: kerberos
+ansible_winrm_server_cert_validation: validate
+ansible_winrm_kerberos_delegation: true

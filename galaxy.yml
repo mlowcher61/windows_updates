@@ -1,0 +1,27 @@
+---
+namespace: mlowcher61
+name: windows_patching
+version: 0.1.0
+readme: README.md
+authors:
+  - Michael Lowcher <mlowcher@hotmail.com>
+description: >
+  AAP-driven Windows Server patching with security-posture reporting.
+license:
+  - MIT
+tags:
+  - windows
+  - patching
+  - security
+  - posture
+  - reporting
+  - aap
+repository: https://github.com/mlowcher61/windows_updates
+documentation: https://github.com/mlowcher61/windows_updates/blob/main/README.md
+issues: https://github.com/mlowcher61/windows_updates/issues
+build_ignore:
+  - .git
+  - .fact_cache
+  - reports
+  - tests
+  - .claude

@@ -1,0 +1,40 @@
+---
+- name: Notification templates
+  hosts: localhost
+  gather_facts: false
+  module_defaults:
+    group/ansible.platform.controller:
+      controller_host: "{{ aap_hostname }}"
+      controller_username: "{{ aap_username }}"
+      controller_password: "{{ aap_password }}"
+      validate_certs: "{{ aap_validate_certs | default(false) }}"
+  tasks:
+    - name: notify_patch_success
+      ansible.platform.notification_template:
+        name: notify_patch_success
+        organization: Default
+        notification_type: email
+        notification_configuration:
+          host: "{{ smtp_host | default('smtp.example.com') }}"
+          port: 25
+          use_tls: false
+          use_ssl: false
+          sender: aap-patching@example.com
+          recipients: ["windows-admins@example.com"]
+          username: ""
+          password: ""
+
+    - name: notify_patch_failure
+      ansible.platform.notification_template:
+        name: notify_patch_failure
+        organization: Default
+        notification_type: email
+        notification_configuration:
+          host: "{{ smtp_host | default('smtp.example.com') }}"
+          port: 25
+          use_tls: false
+          use_ssl: false
+          sender: aap-patching@example.com
+          recipients: ["windows-admins-oncall@example.com"]
+          username: ""
+          password: ""

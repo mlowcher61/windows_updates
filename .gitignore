@@ -1,0 +1,31 @@
+# Ansible
+*.retry
+.fact_cache/
+.ansible/
+
+# Local AAP credentials (never commit)
+aap/secrets.yml
+aap/*.local.yml
+
+# Generated reports
+reports/*.html
+reports/*.csv
+reports/*.json
+!reports/.gitkeep
+
+# Patch fact files (runtime artifacts)
+/tmp/patch_facts/
+
+# Python
+__pycache__/
+*.pyc
+.pytest_cache/
+
+# Editor / OS
+.DS_Store
+*.swp
+.vscode/
+.idea/
+
+# Claude Code local settings
+.claude/settings.local.json

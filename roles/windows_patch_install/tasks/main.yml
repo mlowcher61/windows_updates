@@ -1,0 +1,77 @@
+---
+- name: Ensure patch-facts directory exists on control node
+  ansible.builtin.file:
+    path: "{{ patch_facts_dir }}"
+    state: directory
+    mode: '0750'
+  delegate_to: localhost
+  run_once: true
+
+- name: Skip install entirely on scan-only hosts
+  ansible.builtin.meta: end_host
+  when: scan_only | default(false) | bool
+
+- name: Block — install, reboot, verify
+  block:
+
+    - name: Re-scan immediately before installing (fresh state)
+      ansible.windows.win_updates:
+        category_names: "{{ install_categories }}"
+        state: searched
+      register: pre_install_scan
+
+    - name: Install selected categories
+      ansible.windows.win_updates:
+        category_names: "{{ install_categories }}"
+        state: installed
+        reboot: false
+        log_path: 'C:\Windows\Temp\win_updates.log'
+      register: install_result
+
+    - name: Reboot if required by installed updates
+      ansible.windows.win_reboot:
+        reboot_timeout: "{{ reboot_timeout }}"
+        post_reboot_delay: 30
+      when: install_result.reboot_required | default(false) | bool
+
+    - name: Verification scan (post-install)
+      ansible.windows.win_updates:
+        category_names: "{{ install_categories }}"
+        state: searched
+      register: post_install_scan
+
+  rescue:
+
+    - name: Record install failure
+      ansible.builtin.set_fact:
+        install_error: "{{ ansible_failed_result | default({'msg': 'unknown failure'}) }}"
+
+  always:
+
+    - name: Stamp last-patch date locally on host
+      ansible.windows.win_copy:
+        content: |
+          {"last_patch_date": "{{ ansible_date_time.iso8601 }}"}
+        dest: 'C:\ProgramData\Ansible\last_patch.json'
+      failed_when: false
+
+    - name: Build per-host install fact
+      ansible.builtin.set_fact:
+        host_install_fact:
+          hostname: "{{ inventory_hostname }}"
+          phase: install
+          install_time: "{{ ansible_date_time.iso8601 }}"
+          attempted_categories: "{{ install_categories }}"
+          installed: "{{ install_result.updates | default({}) | dict2items | map(attribute='value') | selectattr('installed', 'equalto', true) | list }}"
+          installed_count: "{{ (install_result.updates | default({}) | dict2items | map(attribute='value') | selectattr('installed', 'equalto', true) | list) | length }}"
+          failed: "{{ install_result.updates | default({}) | dict2items | map(attribute='value') | selectattr('installed', 'equalto', false) | list }}"
+          rebooted: "{{ install_result.reboot_required | default(false) }}"
+          still_missing_after_install: "{{ post_install_scan.updates | default({}) | dict2items | map(attribute='value') | list }}"
+          error: "{{ install_error | default(none) }}"
+
+    - name: Persist install fact to control node
+      ansible.builtin.copy:
+        content: "{{ host_install_fact | to_nice_json }}"
+        dest: "{{ patch_facts_dir }}/{{ inventory_hostname }}.install.json"
+        mode: '0640'
+      delegate_to: localhost

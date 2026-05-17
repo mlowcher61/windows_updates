@@ -1,0 +1,10 @@
+---
+# Windows Patch — Report
+# Aggregates per-host JSON facts written by scan and install plays, then produces
+# HTML + CSV + email. Runs on localhost, NOT on Windows targets.
+- name: Generate Windows patch posture report
+  hosts: localhost
+  gather_facts: false
+  connection: local
+  roles:
+    - role: windows_patch_report

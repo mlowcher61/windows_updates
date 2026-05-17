@@ -1,0 +1,3 @@
+---
+# Load OS lifecycle data once at role start so the filter plugin can use it.
+os_lifecycle: "{{ lookup('file', playbook_dir + '/../files/os_lifecycle.yml') | from_yaml }}"

@@ -1,0 +1,29 @@
+---
+patch_facts_dir: "{{ lookup('env', 'AWX_PRIVATE_DATA_DIR') | default('/tmp', true) }}/patch_facts"
+report_output_dir: "{{ playbook_dir }}/../reports"
+
+# Top-N risks surfaced in the report's Top Risks section.
+top_risks_count: 5
+
+# Posture grade weights (must sum to 100).
+posture_weights:
+  security_currency: 30   # missing security/critical KB ratio
+  ism_sla:          20    # mean time to patch vs ISM target
+  reboot_hygiene:   15    # no pending reboots
+  lifecycle:        15    # OS in lifecycle support
+  patch_recency:    10    # last patch <= recency_days_target
+  failure_rate:     10    # no failed updates
+
+# Compliance thresholds — ASD Essential Eight ISM 1694 / 1877.
+posture_thresholds:
+  ism_critical_hours: 48          # critical / actively exploited
+  ism_standard_days: 14           # standard (non-critical)
+  recency_days_target: 35         # "last patch" age before scoring penalty
+  lifecycle_near_eos_days: 365    # warn when within this window of extended_end
+
+# Report recipients — usually overridden by AAP survey.
+report_recipients: []
+
+# SMTP defaults — usually provided by AAP smtp_relay custom credential.
+smtp_port: 25
+smtp_secure: try

@@ -1,0 +1,87 @@
+---
+- name: Create job templates
+  hosts: localhost
+  gather_facts: false
+  module_defaults:
+    group/ansible.platform.controller:
+      controller_host: "{{ aap_hostname }}"
+      controller_username: "{{ aap_username }}"
+      controller_password: "{{ aap_password }}"
+      validate_certs: "{{ aap_validate_certs | default(false) }}"
+  tasks:
+    - name: JT — Windows Patch — Scan
+      ansible.platform.job_template:
+        name: "Windows Patch — Scan"
+        organization: Default
+        project: windows_updates
+        inventory: windows_servers
+        playbook: playbooks/01_scan.yml
+        credentials: [cred_winrm_prod]
+        execution_environment: windows_patching_ee
+        ask_limit_on_launch: true
+        ask_variables_on_launch: true
+        survey_enabled: true
+        survey_spec:
+          name: Scan options
+          description: Override scan target group
+          spec:
+            - question_name: Target group
+              variable: target_group
+              type: multiplechoice
+              choices: ["windows_servers", "prod", "dev", "sensitive"]
+              default: windows_servers
+              required: true
+
+    - name: JT — Windows Patch — Install
+      ansible.platform.job_template:
+        name: "Windows Patch — Install"
+        organization: Default
+        project: windows_updates
+        inventory: windows_servers
+        playbook: playbooks/02_install.yml
+        credentials: [cred_winrm_prod, cred_wsus_corporate]
+        execution_environment: windows_patching_ee
+        ask_limit_on_launch: true
+        ask_variables_on_launch: true
+        survey_enabled: true
+        survey_spec:
+          name: Install options
+          description: Override install behaviour for this run
+          spec:
+            - question_name: Target group
+              variable: target_group
+              type: multiplechoice
+              choices: ["prod", "dev"]
+              default: dev
+              required: true
+            - question_name: Serial batch size
+              variable: install_serial
+              type: text
+              default: "20%"
+              required: false
+            - question_name: Override categories (comma-separated)
+              variable: install_categories_override
+              type: text
+              default: ""
+              required: false
+
+    - name: JT — Windows Patch — Report
+      ansible.platform.job_template:
+        name: "Windows Patch — Report"
+        organization: Default
+        project: windows_updates
+        inventory: windows_servers
+        playbook: playbooks/03_report.yml
+        credentials: [cred_smtp_relay]
+        execution_environment: windows_patching_ee
+        ask_variables_on_launch: true
+        survey_enabled: true
+        survey_spec:
+          name: Report distribution
+          description: Who receives the report email
+          spec:
+            - question_name: Recipient list (comma-separated emails)
+              variable: report_recipients_raw
+              type: text
+              default: "windows-admins@example.com"
+              required: true

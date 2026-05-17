@@ -1,0 +1,28 @@
+---
+- name: Create AAP inventory and SCM source
+  hosts: localhost
+  gather_facts: false
+  module_defaults:
+    group/ansible.platform.controller:
+      controller_host: "{{ aap_hostname }}"
+      controller_username: "{{ aap_username }}"
+      controller_password: "{{ aap_password }}"
+      validate_certs: "{{ aap_validate_certs | default(false) }}"
+  tasks:
+    - name: Inventory windows_servers
+      ansible.platform.inventory:
+        name: windows_servers
+        organization: Default
+        description: All Windows servers managed by AAP
+
+    - name: Inventory source from project
+      ansible.platform.inventory_source:
+        name: windows_servers_scm
+        inventory: windows_servers
+        organization: Default
+        source: scm
+        source_project: windows_updates
+        source_path: inventories/production/hosts.yml
+        update_on_launch: true
+        overwrite: true
+        overwrite_vars: true

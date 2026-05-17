@@ -1,0 +1,108 @@
+---
+- name: Locate patch-fact files written by scan and install plays
+  ansible.builtin.find:
+    paths: "{{ patch_facts_dir }}"
+    patterns: ["*.scan.json", "*.install.json"]
+    recurse: false
+  register: fact_files
+
+- name: Fail loudly if no facts were found
+  ansible.builtin.fail:
+    msg: |
+      No patch-fact files found in {{ patch_facts_dir }}.
+      Run the Scan job template (and optionally Install) before Report.
+  when: fact_files.files | length == 0
+
+- name: Load patch-fact files into memory
+  ansible.builtin.set_fact:
+    raw_facts: >-
+      {{ fact_files.files
+         | map(attribute='path')
+         | map('regex_replace', '^', '')
+         | list }}
+
+- name: Read all fact files content
+  ansible.builtin.slurp:
+    src: "{{ item }}"
+  loop: "{{ raw_facts }}"
+  register: slurped
+
+- name: Decode and group facts by host
+  ansible.builtin.set_fact:
+    fleet_facts: >-
+      {{ slurped.results
+         | map(attribute='content')
+         | map('b64decode')
+         | map('from_json')
+         | list
+         | groupby('hostname') }}
+
+- name: Compute per-host posture
+  ansible.builtin.set_fact:
+    host_postures: >-
+      {{ host_postures | default([]) +
+         [ {'hostname': item.0,
+            'data': item.1,
+            'posture': item.1 | posture_grade_host(posture_weights, posture_thresholds, os_lifecycle) } ] }}
+  loop: "{{ fleet_facts }}"
+  loop_control:
+    label: "{{ item.0 }}"
+
+- name: Compute fleet posture
+  ansible.builtin.set_fact:
+    fleet_posture: "{{ host_postures | posture_grade_fleet(posture_weights, posture_thresholds) }}"
+
+- name: Identify top risks
+  ansible.builtin.set_fact:
+    top_risks: "{{ host_postures | top_risks_ranking(top_risks_count) }}"
+
+- name: Generate timestamp for report filenames
+  ansible.builtin.set_fact:
+    report_stamp: "{{ lookup('pipe', 'date -u +%Y%m%dT%H%M%SZ') }}"
+
+- name: Render HTML report
+  ansible.builtin.template:
+    src: report.html.j2
+    dest: "{{ report_output_dir }}/posture-report-{{ report_stamp }}.html"
+    mode: '0644'
+
+- name: Render CSV report
+  ansible.builtin.template:
+    src: report.csv.j2
+    dest: "{{ report_output_dir }}/posture-report-{{ report_stamp }}.csv"
+    mode: '0644'
+
+- name: Render email summary (HTML body)
+  ansible.builtin.template:
+    src: email_summary.html.j2
+    dest: "{{ report_output_dir }}/email-summary-{{ report_stamp }}.html"
+    mode: '0644'
+
+- name: Send email summary
+  community.general.mail:
+    host: "{{ smtp_host }}"
+    port: "{{ smtp_port | default(25) }}"
+    username: "{{ smtp_user | default(omit) }}"
+    password: "{{ smtp_password | default(omit) }}"
+    secure: "{{ smtp_secure | default('try') }}"
+    sender: "{{ smtp_from | default('aap-patching@' + ansible_fqdn | default('example.com')) }}"
+    to: "{{ report_recipients }}"
+    subject: "[AAP] Windows Patch Posture — Grade {{ fleet_posture.grade }} ({{ fleet_posture.score }}/100)"
+    subtype: html
+    body: "{{ lookup('file', report_output_dir + '/email-summary-' + report_stamp + '.html') }}"
+    attach:
+      - "{{ report_output_dir }}/posture-report-{{ report_stamp }}.csv"
+  when:
+    - smtp_host is defined
+    - report_recipients | length > 0
+
+- name: Surface report summary to AAP UI via set_stats
+  ansible.builtin.set_stats:
+    data:
+      fleet_grade: "{{ fleet_posture.grade }}"
+      fleet_score: "{{ fleet_posture.score }}"
+      hosts_total: "{{ host_postures | length }}"
+      hosts_compliant: "{{ host_postures | selectattr('posture.grade', 'in', ['A', 'B']) | list | length }}"
+      report_html: "{{ report_output_dir }}/posture-report-{{ report_stamp }}.html"
+    per_host: false
+    aggregate: false

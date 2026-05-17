@@ -1,0 +1,30 @@
+---
+- name: Schedules
+  hosts: localhost
+  gather_facts: false
+  module_defaults:
+    group/ansible.platform.controller:
+      controller_host: "{{ aap_hostname }}"
+      controller_username: "{{ aap_username }}"
+      controller_password: "{{ aap_password }}"
+      validate_certs: "{{ aap_validate_certs | default(false) }}"
+  tasks:
+    - name: Patch Tuesday + 3 days (dev)
+      ansible.platform.schedule:
+        name: PatchTuesday_dev
+        unified_job_template: "Windows Patch Cycle"
+        rrule: "DTSTART:20260512T200000Z RRULE:FREQ=MONTHLY;BYDAY=2TU;INTERVAL=1"
+        description: Runs the workflow against dev hosts, 3 days after Patch Tuesday
+        extra_data:
+          target_group: dev
+          require_approval: false
+
+    - name: Patch Tuesday + 7 days (prod)
+      ansible.platform.schedule:
+        name: PatchTuesday_prod
+        unified_job_template: "Windows Patch Cycle"
+        rrule: "DTSTART:20260512T200000Z RRULE:FREQ=MONTHLY;BYDAY=2TU;INTERVAL=1"
+        description: Runs the workflow against prod hosts, 7 days after Patch Tuesday
+        extra_data:
+          target_group: prod
+          require_approval: true

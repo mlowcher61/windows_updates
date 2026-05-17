@@ -1,0 +1,21 @@
+---
+- name: Create AAP project
+  hosts: localhost
+  gather_facts: false
+  module_defaults:
+    group/ansible.platform.controller:
+      controller_host: "{{ aap_hostname }}"
+      controller_username: "{{ aap_username }}"
+      controller_password: "{{ aap_password }}"
+      validate_certs: "{{ aap_validate_certs | default(false) }}"
+  tasks:
+    - name: windows_updates project (SCM)
+      ansible.platform.project:
+        name: windows_updates
+        description: Windows Server patching and posture reporting
+        organization: Default
+        scm_type: git
+        scm_url: "{{ project_scm_url | default('https://github.com/mlowcher61/windows_updates.git') }}"
+        scm_branch: main
+        scm_update_on_launch: true
+        scm_clean: true

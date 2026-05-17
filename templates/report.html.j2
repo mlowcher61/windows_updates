@@ -1,0 +1,136 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Windows Patch Posture — {{ report_stamp }}</title>
+<style>
+  body { font-family: -apple-system, Segoe UI, sans-serif; margin: 0; padding: 0; background:#f4f6f8; color:#222; }
+  header { background:#1f3a5f; color:#fff; padding:20px 30px; }
+  header h1 { margin:0; font-size:22px; }
+  header .meta { font-size:13px; opacity:0.85; margin-top:4px; }
+  .container { max-width: 1100px; margin: 0 auto; padding: 20px; }
+  .card { background:#fff; border-radius:8px; padding:20px 24px; margin-bottom:18px; box-shadow:0 1px 3px rgba(0,0,0,0.06); }
+  .grade-block { display:flex; align-items:center; gap:30px; }
+  .grade-circle { width:130px; height:130px; border-radius:50%; display:flex; flex-direction:column; align-items:center; justify-content:center; color:#fff; font-weight:700; }
+  .grade-A, .grade-B { background:#2e7d32; }
+  .grade-C           { background:#ed6c02; }
+  .grade-D, .grade-F { background:#c62828; }
+  .grade-letter { font-size:48px; line-height:1; }
+  .grade-score  { font-size:14px; opacity:0.9; margin-top:6px; }
+  .summary-grid { flex:1; display:grid; grid-template-columns: repeat(2, 1fr); gap:10px 30px; font-size:14px; }
+  .summary-grid div span { color:#666; }
+  .summary-grid div b { color:#222; }
+  h2 { font-size:16px; margin:0 0 14px; padding-bottom:6px; border-bottom:1px solid #eee; }
+  .bar-row { display:grid; grid-template-columns: 200px 60px 1fr; align-items:center; gap:12px; margin-bottom:8px; font-size:13px; }
+  .bar { background:#eee; height:10px; border-radius:5px; overflow:hidden; }
+  .bar > div { height:100%; }
+  .bar-green  > div { background:#2e7d32; }
+  .bar-amber  > div { background:#ed6c02; }
+  .bar-red    > div { background:#c62828; }
+  table.risk { width:100%; border-collapse:collapse; font-size:13px; }
+  table.risk td { padding:6px 10px; border-bottom:1px solid #f0f0f0; vertical-align:top; }
+  table.risk td.idx { width:32px; color:#888; }
+  table.risk td.host { font-weight:600; }
+  details { border-bottom:1px solid #eee; padding:8px 0; }
+  details summary { cursor:pointer; font-size:14px; }
+  details summary .pill { display:inline-block; background:#eef; color:#225; border-radius:10px; padding:1px 9px; margin-left:8px; font-size:12px; }
+  details .body { padding:10px 0 6px 20px; font-size:13px; color:#333; }
+  details .body ul { margin:4px 0; padding-left:20px; }
+  .pill-A, .pill-B { background:#e8f5e9; color:#2e7d32; }
+  .pill-C          { background:#fff3e0; color:#ed6c02; }
+  .pill-D, .pill-F { background:#ffebee; color:#c62828; }
+  footer { padding:14px 30px; font-size:12px; color:#888; text-align:center; }
+</style>
+</head>
+<body>
+<header>
+  <h1>Windows Server Patch Posture Report</h1>
+  <div class="meta">Generated: {{ report_stamp }} UTC · Hosts analysed: {{ host_postures | length }}</div>
+</header>
+<div class="container">
+
+  <div class="card">
+    <div class="grade-block">
+      <div class="grade-circle grade-{{ fleet_posture.grade }}">
+        <div class="grade-letter">{{ fleet_posture.grade }}</div>
+        <div class="grade-score">{{ fleet_posture.score }} / 100</div>
+      </div>
+      <div class="summary-grid">
+        <div><span>Hosts scanned:</span> <b>{{ fleet_posture.host_count }}</b></div>
+        <div><span>Fully compliant:</span> <b>{{ fleet_posture.compliant }} ({{ fleet_posture.compliant_pct }}%)</b></div>
+        <div><span>At risk (D/F):</span> <b>{{ fleet_posture.at_risk }}</b></div>
+        <div><span>Need attention:</span> <b>{{ fleet_posture.host_count - fleet_posture.compliant - fleet_posture.at_risk }}</b></div>
+      </div>
+    </div>
+  </div>
+
+  <div class="card">
+    <h2>Posture Breakdown</h2>
+    {% set comp_avg = {} %}
+    {% for key in ['security_currency','ism_sla','reboot_hygiene','lifecycle','patch_recency','failure_rate'] %}
+      {%- set vals = host_postures | map(attribute='posture.components.' + key) | list -%}
+      {%- set avg = ((vals | sum) / (vals | length)) | round(0) | int if vals | length else 0 -%}
+      {%- set cls = 'bar-green' if avg >= 90 else 'bar-amber' if avg >= 70 else 'bar-red' -%}
+    <div class="bar-row">
+      <div>{{ key.replace('_',' ') | title }}</div>
+      <div>{{ avg }}%</div>
+      <div class="bar {{ cls }}"><div style="width:{{ avg }}%"></div></div>
+    </div>
+    {% endfor %}
+  </div>
+
+  <div class="card">
+    <h2>Top {{ top_risks | length }} Risks</h2>
+    {% if top_risks %}
+    <table class="risk">
+      {% for r in top_risks %}
+      <tr>
+        <td class="idx">{{ loop.index }}.</td>
+        <td class="host">{{ r.hostname }}</td>
+        <td><span class="pill pill-{{ r.grade }}">{{ r.grade }}</span> {{ r.reason }}</td>
+      </tr>
+      {% endfor %}
+    </table>
+    {% else %}
+    <p style="color:#666; font-size:13px;">No outstanding risks — the fleet is in good shape.</p>
+    {% endif %}
+  </div>
+
+  <div class="card">
+    <h2>Per-Host Detail</h2>
+    {% for hp in host_postures | sort(attribute='posture.score') %}
+    <details {% if hp.posture.grade in ['D','F'] %}open{% endif %}>
+      <summary>
+        <b>{{ hp.hostname }}</b>
+        <span class="pill pill-{{ hp.posture.grade }}">{{ hp.posture.grade }} · {{ hp.posture.score }}</span>
+        <span class="pill">{{ hp.posture.merged.os.product }} {{ hp.posture.merged.os.version }}</span>
+        <span class="pill">{{ hp.posture.lifecycle_status }}</span>
+      </summary>
+      <div class="body">
+        <div>Last patched: <b>{{ hp.posture.merged.last_successful_patch | default('unknown') }}</b>
+        {% if hp.posture.last_patch_age_days is not none %}
+          ({{ hp.posture.last_patch_age_days | round(0) | int }} days ago)
+        {% endif %}</div>
+        <div>Pending reboot before scan: <b>{{ 'Yes' if hp.posture.pending_reboot else 'No' }}</b></div>
+        <div>Missing updates: <b>{{ hp.posture.missing_count }}</b>
+          ({{ hp.posture.critical_or_security_missing }} critical/security)</div>
+        {% if hp.posture.merged.missing_updates %}
+        <ul>
+          {% for u in hp.posture.merged.missing_updates[:10] %}
+          <li>{{ u.kb_article_ids[0] if u.kb_article_ids else u.title | default('Untitled update') }}
+            ({{ u.categories | join(', ') if u.categories else 'uncategorized' }})</li>
+          {% endfor %}
+        </ul>
+        {% endif %}
+        {% if hp.posture.failed_count > 0 %}
+        <div style="color:#c62828;">Failed updates: <b>{{ hp.posture.failed_count }}</b></div>
+        {% endif %}
+      </div>
+    </details>
+    {% endfor %}
+  </div>
+
+</div>
+<footer>Methodology &amp; metric definitions: docs/REPORT_METRICS.md · Generated by AAP</footer>
+</body>
+</html>

@@ -1,0 +1,9 @@
+---
+# Windows Patch — Scan
+# Discovers what updates each target host needs. Read-only; safe to run any time.
+- name: Scan Windows hosts for missing updates
+  hosts: "{{ target_group | default('windows_servers') }}"
+  gather_facts: true
+  serial: "{{ scan_serial | default('50%') }}"
+  roles:
+    - role: windows_patch_scan

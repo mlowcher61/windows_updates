@@ -1,0 +1,4 @@
+---
+# Scan-only — install role exits early when this is true.
+scan_only: true
+require_approval: false

@@ -1,0 +1,12 @@
+---
+patch_facts_dir: "{{ lookup('env', 'AWX_PRIVATE_DATA_DIR') | default('/tmp', true) }}/patch_facts"
+
+# Default = Security + Critical only. Dev environments override to include more.
+install_categories:
+  - SecurityUpdates
+  - CriticalUpdates
+
+reboot_timeout: 1800
+
+# When true, role exits without installing. Used by inventories/sensitive group.
+scan_only: false

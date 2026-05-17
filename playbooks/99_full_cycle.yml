@@ -1,0 +1,7 @@
+---
+# Full Cycle (ad-hoc / non-AAP)
+# Runs scan → install → report sequentially. AAP users should use the workflow
+# template instead, which adds the approval gate between scan and install.
+- import_playbook: 01_scan.yml
+- import_playbook: 02_install.yml
+- import_playbook: 03_report.yml

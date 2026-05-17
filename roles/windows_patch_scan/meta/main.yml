@@ -1,0 +1,11 @@
+---
+galaxy_info:
+  role_name: windows_patch_scan
+  author: mlowcher61
+  description: Inventory missing Windows updates and emit per-host scan facts
+  license: MIT
+  min_ansible_version: "2.15"
+  platforms:
+    - name: Windows
+      versions: [2016, 2019, 2022, 2025]
+dependencies: []

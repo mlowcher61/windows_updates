@@ -1,0 +1,13 @@
+---
+# Where per-host JSON scan facts are written on the control node.
+# Use AAP runner's persisted artifact dir when running inside AAP.
+patch_facts_dir: "{{ lookup('env', 'AWX_PRIVATE_DATA_DIR') | default('/tmp', true) }}/patch_facts"
+
+# Categories to inspect during scan. Default = everything visible to Windows Update.
+# Override per inventory group (e.g. prod = SecurityUpdates + CriticalUpdates only).
+scan_categories:
+  - SecurityUpdates
+  - CriticalUpdates
+  - UpdateRollups
+  - DefinitionUpdates
+  - Updates

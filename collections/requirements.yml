@@ -1,0 +1,14 @@
+---
+# Certified / Validated content (Red Hat preferred per global instructions)
+collections:
+  # Certified — Red Hat
+  - name: ansible.windows
+    version: ">=2.4.0"
+  - name: ansible.platform
+    version: ">=2.5.0"
+  # Validated — Red Hat
+  - name: community.windows
+    version: ">=2.2.0"
+  # Required for community.general.mail
+  - name: community.general
+    version: ">=8.0.0"

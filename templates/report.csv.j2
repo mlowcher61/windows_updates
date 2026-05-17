@@ -1,0 +1,4 @@
+hostname,os_product,os_version,grade,score,missing_total,missing_critical_or_security,pending_reboot,last_patch_date,last_patch_age_days,failed_count,lifecycle_status
+{% for hp in host_postures -%}
+{{ hp.hostname }},{{ hp.posture.merged.os.product | default('') }},{{ hp.posture.merged.os.version | default('') }},{{ hp.posture.grade }},{{ hp.posture.score }},{{ hp.posture.missing_count }},{{ hp.posture.critical_or_security_missing }},{{ hp.posture.pending_reboot }},{{ hp.posture.merged.last_successful_patch | default('') }},{{ (hp.posture.last_patch_age_days | round(0) | int) if hp.posture.last_patch_age_days is not none else '' }},{{ hp.posture.failed_count }},{{ hp.posture.lifecycle_status }}
+{% endfor %}

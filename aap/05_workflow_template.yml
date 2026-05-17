@@ -1,0 +1,52 @@
+---
+- name: Create workflow template
+  hosts: localhost
+  gather_facts: false
+  module_defaults:
+    group/ansible.platform.controller:
+      controller_host: "{{ aap_hostname }}"
+      controller_username: "{{ aap_username }}"
+      controller_password: "{{ aap_password }}"
+      validate_certs: "{{ aap_validate_certs | default(false) }}"
+  tasks:
+    - name: Workflow — Windows Patch Cycle
+      ansible.platform.workflow_job_template:
+        name: "Windows Patch Cycle"
+        organization: Default
+        inventory: windows_servers
+        ask_variables_on_launch: true
+        ask_inventory_on_launch: true
+        extra_vars:
+          require_approval: true
+        workflow_nodes:
+          - identifier: node_scan
+            unified_job_template:
+              name: "Windows Patch — Scan"
+              type: job_template
+            success_nodes: [node_approval]
+            failure_nodes: [node_report_after_failure]
+          - identifier: node_approval
+            unified_job_template:
+              type: workflow_approval
+              name: "Proceed with patch install?"
+              description: |
+                Scan complete. Approve to proceed with installation.
+                Decline to skip directly to the report.
+              timeout: 14400
+            success_nodes: [node_install]
+            failure_nodes: [node_report]
+          - identifier: node_install
+            unified_job_template:
+              name: "Windows Patch — Install"
+              type: job_template
+            success_nodes: [node_report]
+            failure_nodes: [node_report]
+            always_nodes: []
+          - identifier: node_report
+            unified_job_template:
+              name: "Windows Patch — Report"
+              type: job_template
+          - identifier: node_report_after_failure
+            unified_job_template:
+              name: "Windows Patch — Report"
+              type: job_template

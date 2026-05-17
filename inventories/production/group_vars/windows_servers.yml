@@ -1,0 +1,3 @@
+---
+# Workflow-level toggles. Override per environment group.
+require_approval: false

@@ -1,0 +1,43 @@
+---
+- name: Ensure patch-facts directory exists on control node
+  ansible.builtin.file:
+    path: "{{ patch_facts_dir }}"
+    state: directory
+    mode: '0750'
+  delegate_to: localhost
+  run_once: true
+
+- name: Detect pending reboot prior to scan
+  ansible.windows.win_reg_stat:
+    path: HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Component Based Servicing\RebootPending
+  register: pre_reboot_pending
+  failed_when: false
+  changed_when: false
+
+- name: Search for missing updates
+  ansible.windows.win_updates:
+    category_names: "{{ scan_categories }}"
+    state: searched
+  register: scan_result
+
+- name: Build per-host scan fact
+  ansible.builtin.set_fact:
+    host_scan_fact:
+      hostname: "{{ inventory_hostname }}"
+      phase: scan
+      scan_time: "{{ ansible_date_time.iso8601 }}"
+      os:
+        product: "{{ ansible_facts['distribution'] | default('Windows Server') }}"
+        version: "{{ ansible_facts['distribution_version'] | default('unknown') }}"
+        build: "{{ ansible_facts['kernel'] | default('unknown') }}"
+      pending_reboot_before_scan: "{{ pre_reboot_pending.exists | default(false) }}"
+      missing_updates: "{{ scan_result.updates | default({}) | dict2items | map(attribute='value') | list }}"
+      missing_count: "{{ scan_result.updates | default({}) | length }}"
+      last_successful_patch: "{{ ansible_facts.ansible_local.last_patch_date | default(omit) }}"
+
+- name: Persist scan fact to control node
+  ansible.builtin.copy:
+    content: "{{ host_scan_fact | to_nice_json }}"
+    dest: "{{ patch_facts_dir }}/{{ inventory_hostname }}.scan.json"
+    mode: '0640'
+  delegate_to: localhost
