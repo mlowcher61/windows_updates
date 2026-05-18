@@ -4,6 +4,10 @@ Automate Windows Server patching from **Ansible Automation Platform (AAP)** and 
 
 > Built for **AAP**, not ansible-core. Uses **certified** Red Hat content (`ansible.windows`, `ansible.platform`). Credentials live in AAP custom credential types — **no vaulted files** in git.
 
+**[See an example report →](https://mlowcher61.github.io/windows_updates/example_report.html)**
+
+[![Example posture report](docs/example_report.png)](https://mlowcher61.github.io/windows_updates/example_report.html)
+
 ---
 
 ## What this solves
@@ -103,6 +107,8 @@ Edit `inventories/production/hosts.yml` to list your hosts. Three groups drive b
 Launch the workflow template `Windows Patch Cycle` from AAP. On prod hosts you will be prompted for approval before installation proceeds. The report appears as a job artifact and is emailed to the distribution list.
 
 ## Reading the report
+
+A live example is published here: **[mlowcher61.github.io/windows_updates/example_report.html](https://mlowcher61.github.io/windows_updates/example_report.html)**
 
 The HTML report has four sections:
 
