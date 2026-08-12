@@ -123,7 +123,13 @@ The HTML report has four sections:
 
 1. **Fleet grade card** — A–F grade with overall score out of 100
 2. **Posture breakdown** — six metrics as progress bars (security currency, ISM SLA compliance, reboot hygiene, OS lifecycle, recency, failure rate)
-3. **Top 5 risks** — the most urgent items, ranked
+3. **Top 5 risks** — the most urgent hosts, each with a plain-English reason.
+   The default ranking is a straight sort by posture score, worst grade first.
+   That is a deliberate placeholder: ranking strategy is the one part of the
+   scoring model that depends on how your team triages (lifecycle-first for
+   audit-driven shops, severity-weighted for CVE response, and so on). See
+   [docs/REPORT_METRICS.md](docs/REPORT_METRICS.md#top-risks-ranking) for the
+   options and `filter_plugins/posture.py :: top_risks_ranking()` to change it.
 4. **Per-host detail** — collapsible blocks with missing KBs, lifecycle status, errors
 
 See [docs/REPORT_METRICS.md](docs/REPORT_METRICS.md) for the exact scoring formula and Microsoft Learn references.
@@ -138,6 +144,8 @@ See [docs/REPORT_METRICS.md](docs/REPORT_METRICS.md) for the exact scoring formu
 | OS lifecycle dates | `files/os_lifecycle.yml` |
 | Install batch size (serial %) | `inventories/production/group_vars/<group>.yml` |
 | Report email recipients | Survey on the Report job template in AAP |
+| Top Risks ranking strategy | `filter_plugins/posture.py :: top_risks_ranking()` |
+| Number of hosts in Top Risks | `top_risks_count` in `roles/windows_patch_report/defaults/main.yml` |
 
 ## Extending
 
