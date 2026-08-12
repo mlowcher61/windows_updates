@@ -3,14 +3,14 @@
   hosts: localhost
   gather_facts: false
   module_defaults:
-    group/ansible.platform.controller:
+    group/ansible.controller.controller:
       controller_host: "{{ aap_hostname }}"
       controller_username: "{{ aap_username }}"
       controller_password: "{{ aap_password }}"
       validate_certs: "{{ aap_validate_certs | default(false) }}"
   tasks:
     - name: windows_updates project (SCM)
-      ansible.platform.project:
+      ansible.controller.project:
         name: windows_updates
         description: Windows Server patching and posture reporting
         organization: Default

@@ -3,14 +3,14 @@
   hosts: localhost
   gather_facts: false
   module_defaults:
-    group/ansible.platform.controller:
+    group/ansible.controller.controller:
       controller_host: "{{ aap_hostname }}"
       controller_username: "{{ aap_username }}"
       controller_password: "{{ aap_password }}"
       validate_certs: "{{ aap_validate_certs | default(false) }}"
   tasks:
     - name: notify_patch_success
-      ansible.platform.notification_template:
+      ansible.controller.notification_template:
         name: notify_patch_success
         organization: Default
         notification_type: email
@@ -25,7 +25,7 @@
           password: ""
 
     - name: notify_patch_failure
-      ansible.platform.notification_template:
+      ansible.controller.notification_template:
         name: notify_patch_failure
         organization: Default
         notification_type: email

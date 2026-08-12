@@ -3,14 +3,14 @@
   hosts: localhost
   gather_facts: false
   module_defaults:
-    group/ansible.platform.controller:
+    group/ansible.controller.controller:
       controller_host: "{{ aap_hostname }}"
       controller_username: "{{ aap_username }}"
       controller_password: "{{ aap_password }}"
       validate_certs: "{{ aap_validate_certs | default(false) }}"
   tasks:
     - name: Patch Tuesday + 3 days (dev)
-      ansible.platform.schedule:
+      ansible.controller.schedule:
         name: PatchTuesday_dev
         unified_job_template: "Windows Patch Cycle"
         rrule: "DTSTART:20260512T200000Z RRULE:FREQ=MONTHLY;BYDAY=2TU;INTERVAL=1"
@@ -20,7 +20,7 @@
           require_approval: false
 
     - name: Patch Tuesday + 7 days (prod)
-      ansible.platform.schedule:
+      ansible.controller.schedule:
         name: PatchTuesday_prod
         unified_job_template: "Windows Patch Cycle"
         rrule: "DTSTART:20260512T200000Z RRULE:FREQ=MONTHLY;BYDAY=2TU;INTERVAL=1"

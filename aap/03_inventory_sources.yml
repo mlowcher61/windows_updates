@@ -3,20 +3,20 @@
   hosts: localhost
   gather_facts: false
   module_defaults:
-    group/ansible.platform.controller:
+    group/ansible.controller.controller:
       controller_host: "{{ aap_hostname }}"
       controller_username: "{{ aap_username }}"
       controller_password: "{{ aap_password }}"
       validate_certs: "{{ aap_validate_certs | default(false) }}"
   tasks:
     - name: Inventory windows_servers
-      ansible.platform.inventory:
+      ansible.controller.inventory:
         name: windows_servers
         organization: Default
         description: All Windows servers managed by AAP
 
     - name: Inventory source from project
-      ansible.platform.inventory_source:
+      ansible.controller.inventory_source:
         name: windows_servers_scm
         inventory: windows_servers
         organization: Default

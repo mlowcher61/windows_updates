@@ -4,6 +4,12 @@ collections:
   # Certified — Red Hat
   - name: ansible.windows
     version: ">=2.4.0"
+  # Controller resources (job templates, projects, credentials, inventories,
+  # schedules, notifications). ansible.platform does NOT ship these modules --
+  # it only covers gateway/identity objects (org, team, user, role, service*).
+  - name: ansible.controller
+    version: ">=4.5.0"
+  # Gateway/identity objects. Kept for future org/team/role automation.
   - name: ansible.platform
     version: ">=2.5.0"
   # Validated — Red Hat
