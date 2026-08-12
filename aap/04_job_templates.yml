@@ -14,7 +14,7 @@
         name: "Windows Patch — Scan"
         organization: Default
         project: windows_updates
-        inventory: AWS inventory
+        inventory: AWS Inventory
         playbook: playbooks/01_scan.yml
         credentials: [win_cred]
         execution_environment: windows_ee
@@ -36,7 +36,7 @@
         name: "Windows Patch — Install"
         organization: Default
         project: Windows_updates
-        inventory: AWS inventory
+        inventory: AWS Inventory
         playbook: playbooks/02_install.yml
         credentials: [win_cred]
         execution_environment: windows_ee
@@ -69,7 +69,7 @@
         name: "Windows Patch — Report"
         organization: Default
         project: windows_updates
-        inventory: AWS inventory
+        inventory: AWS Inventory
         playbook: playbooks/03_report.yml
         credentials: [cred_smtp_relay]
         execution_environment: windows_ee
