@@ -92,7 +92,7 @@ This creates:
 - 3 **job templates** (Scan, Install, Report)
 - 1 **workflow template** with a conditional approval node
 - 2 **notification templates** (success / failure email)
-- 2 **schedules** (Patch Tuesday + 3 days dev, + 7 days prod)
+- 2 **schedules** (third Friday for dev, Patch Tuesday + 7 days for prod)
 
 ### 2. Enter credentials in AAP
 

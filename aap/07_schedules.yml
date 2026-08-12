@@ -8,13 +8,21 @@
       # credential attached to the job template (CONTROLLER_HOST /
       # CONTROLLER_USERNAME / CONTROLLER_PASSWORD).
       validate_certs: "{{ aap_validate_certs | default(false) }}"
+  # Automation controller validates rrules more strictly than RFC 5545. It
+  # rejects BYDAY with a numeric prefix (BYDAY=2TU), multiple BYMONTHDAY
+  # values, BYWEEKNO, BYYEARDAY and SECONDLY, and it requires INTERVAL.
+  # Use BYDAY=<day>;BYSETPOS=<n> to express "the nth <day> of the month".
   tasks:
-    - name: Patch Tuesday + 3 days (dev)
+    - name: Third Friday - 3 to 10 days after Patch Tuesday (dev)
       ansible.controller.schedule:
         name: PatchTuesday_dev
         unified_job_template: "Windows Patch Cycle"
-        rrule: "DTSTART:20260512T200000Z RRULE:FREQ=MONTHLY;BYDAY=2TU;INTERVAL=1"
-        description: Runs the workflow against dev hosts, 3 days after Patch Tuesday
+        # Third Friday of every month at 20:00 UTC. Always falls after Patch
+        # Tuesday (the second Tuesday), never before it.
+        rrule: "DTSTART:20260515T200000Z RRULE:FREQ=MONTHLY;INTERVAL=1;BYDAY=FR;BYSETPOS=3"
+        description: >-
+          Runs the workflow against dev hosts on the third Friday of the month,
+          3 to 10 days after Patch Tuesday
         extra_data:
           target_group: dev
           require_approval: false
@@ -23,7 +31,9 @@
       ansible.controller.schedule:
         name: PatchTuesday_prod
         unified_job_template: "Windows Patch Cycle"
-        rrule: "DTSTART:20260512T200000Z RRULE:FREQ=MONTHLY;BYDAY=2TU;INTERVAL=1"
+        # Third Tuesday of every month at 20:00 UTC, which is always exactly
+        # seven days after Patch Tuesday.
+        rrule: "DTSTART:20260519T200000Z RRULE:FREQ=MONTHLY;INTERVAL=1;BYDAY=TU;BYSETPOS=3"
         description: Runs the workflow against prod hosts, 7 days after Patch Tuesday
         extra_data:
           target_group: prod
