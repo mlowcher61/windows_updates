@@ -4,9 +4,9 @@
   gather_facts: false
   module_defaults:
     group/ansible.controller.controller:
-      controller_host: "{{ aap_hostname }}"
-      controller_username: "{{ aap_username }}"
-      controller_password: "{{ aap_password }}"
+      # Host and auth are injected by the Red Hat Ansible Automation Platform
+      # credential attached to the job template (CONTROLLER_HOST /
+      # CONTROLLER_USERNAME / CONTROLLER_PASSWORD).
       validate_certs: "{{ aap_validate_certs | default(false) }}"
   tasks:
     - name: Patch Tuesday + 3 days (dev)

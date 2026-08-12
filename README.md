@@ -72,10 +72,19 @@ open reports/posture-report-*.html
 
 ### 1. Deploy AAP config-as-code
 
+Run this from a job template in AAP with a **Red Hat Ansible Automation
+Platform** credential attached. That credential injects `CONTROLLER_HOST`,
+`CONTROLLER_USERNAME` and `CONTROLLER_PASSWORD` into the job environment, and
+the `ansible.controller` modules read them automatically — so no hostname or
+password is ever passed as an extra-var or stored in git.
+
+To run it from a workstation instead, export the same variables yourself:
+
 ```bash
-ansible-navigator run aap/deploy_aap.yml \
-  -e aap_hostname=aap.example.com \
-  -e aap_username=admin
+export CONTROLLER_HOST=aap.example.com
+export CONTROLLER_USERNAME=admin
+export CONTROLLER_PASSWORD=...        # or CONTROLLER_OAUTH_TOKEN
+ansible-navigator run aap/deploy_aap.yml
 ```
 
 This creates:
