@@ -71,7 +71,7 @@
         project: Windows_updates
         inventory: AWS Inventory
         playbook: playbooks/03_report.yml
-        credentials: [cred_smtp_relay]
+        credentials: [win_cred]
         execution_environment: windows_ee
         ask_variables_on_launch: true
         survey_enabled: true
