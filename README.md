@@ -2,7 +2,7 @@
 
 Automate Windows Server patching from **Ansible Automation Platform (AAP)** and produce a security-posture report that tells Windows administrators exactly where their fleet stands.
 
-> Built for **AAP**, not ansible-core. Uses **certified** Red Hat content (`ansible.windows`, `ansible.platform`). Credentials live in AAP custom credential types — **no vaulted files** in git.
+> Built for **AAP**, not ansible-core. Uses **certified** Red Hat content (`ansible.windows`, `ansible.controller`). Credentials live in AAP custom credential types — **no vaulted files** in git.
 
 **[See an example report →](https://mlowcher61.github.io/windows_updates/example_report.html)**
 
@@ -31,7 +31,7 @@ This repository delivers, end-to-end:
 │  └─────────┘    └──────────┘    └─────────┘    └─────────┘    └────────┘ │
 │       │                              │              │              │     │
 │       ▼                              ▼              ▼              ▼     │
-│   /tmp/patch_facts/<host>.scan.json + .install.json on AAP runner       │
+│  $AWX_PRIVATE_DATA_DIR/patch_facts/<host>.{scan,install}.json           │
 │                                                          │              │
 │                                                          ▼              │
 │                                                  HTML + CSV artifact    │
@@ -43,7 +43,7 @@ This repository delivers, end-to-end:
 
 | Component | Minimum | Notes |
 | --- | --- | --- |
-| Ansible Automation Platform | 2.4+ | Uses `ansible.platform` collection for config-as-code |
+| Ansible Automation Platform | 2.4+ | Config-as-code uses the certified `ansible.controller` collection |
 | Target Windows Server | 2016 / 2019 / 2022 / 2025 | 2012 R2 still works (ESU only — flagged in report) |
 | WinRM | Listener on 5986 (HTTPS) | Kerberos preferred; NTLM supported |
 | Execution Environment | Custom EE in `execution-environment/` | Includes `pywinrm`, `requests-kerberos`, `jmespath` |
@@ -57,14 +57,12 @@ ansible-galaxy collection install -r collections/requirements.yml
 # 2. Edit the demo inventory with your test host
 vi inventories/demo/hosts.yml
 
-# 3. Set WinRM credentials in environment (demo only — production uses AAP credentials)
-export ANSIBLE_USER='Administrator'
-export ANSIBLE_PASSWORD='...'
+# 3. Run the full cycle. The demo inventory already sets ansible_user, so only
+#    the password is needed (demo only — production uses AAP credentials)
+ansible-playbook -i inventories/demo/hosts.yml playbooks/99_full_cycle.yml \
+  -e ansible_password='...'
 
-# 4. Run the full cycle
-ansible-playbook -i inventories/demo/hosts.yml playbooks/99_full_cycle.yml
-
-# 5. Open the report
+# 4. Open the report
 open reports/posture-report-*.html
 ```
 
@@ -89,6 +87,7 @@ ansible-navigator run aap/deploy_aap.yml
 
 This creates:
 - 3 **custom credential types** (`windows_winrm_kerberos`, `wsus_source`, `smtp_relay`)
+- 4 **empty credentials** of those types, ready for you to fill in (see below)
 - 3 **job templates** (Scan, Install, Report)
 - 1 **workflow template** with a conditional approval node
 - 2 **notification templates** (success / failure email)
@@ -96,8 +95,9 @@ This creates:
 
 ### 2. Enter credentials in AAP
 
-After `deploy_aap.yml` runs, open AAP → Resources → Credentials. Three credentials need values filled in:
-- `cred_winrm_prod` — Windows service account
+After `deploy_aap.yml` runs, open AAP → Resources → Credentials. Four credentials need values filled in:
+- `cred_winrm_prod` — Windows service account for prod hosts
+- `cred_winrm_dev` — Windows service account for dev hosts
 - `cred_wsus_corporate` (optional) — leave empty to use Microsoft Update
 - `cred_smtp_relay` — relay used for the report email
 
@@ -143,7 +143,7 @@ See [docs/REPORT_METRICS.md](docs/REPORT_METRICS.md) for the exact scoring formu
 
 - **ServiceNow integration** — push report records into CMDB / change tickets. See [docs/EXTENDING.md](docs/EXTENDING.md).
 - **Promotion to a collection** — `galaxy.yml` already in place. See [docs/EXTENDING.md](docs/EXTENDING.md).
-- **Molecule tests** — `tests/` skeleton in place; full implementation on the roadmap.
+- **Molecule tests** — not yet implemented; on the roadmap.
 
 ## Troubleshooting
 
@@ -151,7 +151,7 @@ See [docs/REPORT_METRICS.md](docs/REPORT_METRICS.md) for the exact scoring formu
 | --- | --- | --- |
 | WinRM connection fails | Kerberos ticket / SPN missing | Verify `setspn -L <service-account>` includes HTTP/host |
 | `win_updates` hangs | Windows Update service paused | `Get-Service wuauserv` on host; restart if Stopped |
-| Report shows 0 hosts | Patch-facts dir not preserved between JTs | Confirm AAP EE writable artifact dir is consistent across JTs |
+| Report shows 0 hosts | Patch-facts dir not preserved between JTs | All three roles default `patch_facts_dir` to `$AWX_PRIVATE_DATA_DIR/patch_facts`; confirm that dir survives between the Scan, Install and Report jobs |
 | ISM SLA always failing | First run has no history | Posture computes from current scan only — accurate after 2+ cycles |
 | Approval node not appearing | `require_approval` var = false at workflow level | Set on prod group_vars or at launch time |
 
