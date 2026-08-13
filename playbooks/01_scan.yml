@@ -5,5 +5,138 @@
   hosts: "{{ target_group | default('windows_servers') }}"
   gather_facts: true
   serial: "{{ scan_serial | default('50%') }}"
+  any_errors_fatal: false
   roles:
     - role: windows_patch_scan
+
+# The workflow's approval gate sits immediately after this job template, so a
+# human has to decide "install or not?" using only what the Scan node printed.
+# This play prints that decision material once for the whole fleet, rather than
+# once per host, and runs outside the `serial` batching above.
+#
+# Eligibility policy: a host is patched only if it responded to the scan AND was
+# not already pending a reboot beforehand. Anything else is excluded from the
+# install and reported for follow-up — the run continues with the healthy set.
+- name: Summarise scan results for the approval gate
+  hosts: localhost
+  gather_facts: false
+  vars:
+    scanned_hosts: "{{ groups[target_group | default('windows_servers')] | default([]) }}"
+
+    # Hosts that actually returned a scan fact. A host that was unreachable, or
+    # that failed mid-role, never sets host_scan_fact.
+    reachable_hosts: >-
+      {{ scanned_hosts | map('extract', hostvars)
+         | selectattr('host_scan_fact', 'defined')
+         | map(attribute='inventory_hostname') | list }}
+    unreachable_hosts: "{{ scanned_hosts | difference(reachable_hosts) }}"
+
+    # Already dirty before we touched them — patching these would chain two
+    # reboots into one maintenance window.
+    pending_reboot_hosts: >-
+      {{ scanned_hosts | map('extract', hostvars)
+         | selectattr('host_scan_fact', 'defined')
+         | selectattr('host_scan_fact.pending_reboot_before_scan', 'truthy')
+         | map(attribute='inventory_hostname') | list }}
+
+    eligible_hosts: "{{ reachable_hosts | difference(pending_reboot_hosts) | sort }}"
+    excluded_hosts: "{{ (unreachable_hosts + pending_reboot_hosts) | unique | sort }}"
+
+    scan_facts: "{{ reachable_hosts | map('extract', hostvars, 'host_scan_fact') | list }}"
+    update_counts: "{{ scan_facts | map(attribute='missing_count') | map('int') | list }}"
+    total_updates: "{{ update_counts | sum }}"
+    hosts_with_updates: "{{ update_counts | select('gt', 0) | list | length }}"
+
+    all_missing: "{{ scan_facts | map(attribute='missing_updates') | flatten }}"
+    security_updates: >-
+      {{ all_missing | selectattr('categories', 'defined')
+         | selectattr('categories', 'contains', 'Security Updates') | list | length }}
+    critical_updates: >-
+      {{ all_missing | selectattr('categories', 'defined')
+         | selectattr('categories', 'contains', 'Critical Updates') | list | length }}
+  tasks:
+    - name: Fail when the scan produced no facts at all
+      ansible.builtin.fail:
+        msg: |
+          No hosts returned scan facts. Nothing to approve.
+          Check the inventory group '{{ target_group | default('windows_servers') }}'
+          and the win_cred credential before re-running.
+      when: reachable_hosts | length == 0
+
+    - name: Fleet scan summary
+      ansible.builtin.debug:
+        msg: >-
+          {{
+            ['================ FLEET SCAN SUMMARY ================',
+             'Target group          : ' ~ (target_group | default('windows_servers')),
+             'Hosts in group        : ' ~ (scanned_hosts | length),
+             'Responded to scan     : ' ~ (reachable_hosts | length),
+             'Unreachable           : ' ~ (unreachable_hosts | length),
+             'Already pending reboot: ' ~ (pending_reboot_hosts | length),
+             'ELIGIBLE TO PATCH     : ' ~ (eligible_hosts | length),
+             '---',
+             'Hosts needing updates : ' ~ hosts_with_updates,
+             'Total updates missing : ' ~ total_updates,
+             '  of which Security   : ' ~ security_updates,
+             '  of which Critical   : ' ~ critical_updates,
+             '===================================================']
+          }}
+
+    - name: Per-host breakdown
+      ansible.builtin.debug:
+        msg: >-
+          {{ '%-40s %5s updates  reboot-pending=%s'
+             | format(item.hostname,
+                      item.missing_count,
+                      item.pending_reboot_before_scan | default(false)) }}
+      loop: "{{ scan_facts | sort(attribute='hostname') }}"
+      loop_control:
+        label: "{{ item.hostname }}"
+
+    - name: List hosts excluded from the install
+      ansible.builtin.debug:
+        msg: >-
+          {{
+            ['--- EXCLUDED FROM INSTALL (follow up separately) ---']
+            + (unreachable_hosts | sort | map('regex_replace', '^', 'UNREACHABLE    : ') | list)
+            + (pending_reboot_hosts | sort | map('regex_replace', '^', 'PENDING REBOOT : ') | list)
+          }}
+      when: excluded_hosts | length > 0
+
+    - name: Approval recommendation
+      ansible.builtin.debug:
+        msg: >-
+          {{
+            ['>>> DENY — no updates found on any eligible host. Nothing to '
+             ~ 'install; denying skips straight to the report.']
+            if total_updates | int == 0
+
+            else ['>>> HOLD — ' ~ (excluded_hosts | length) ~ ' host(s) need attention '
+                  ~ 'before they can be patched (listed above).',
+                  'Approving is still safe: the install will run against only the '
+                  ~ (eligible_hosts | length) ~ ' eligible host(s) and will not touch '
+                  ~ 'the excluded ones.',
+                  'Deny instead if you would rather resolve them first and patch '
+                  ~ 'the whole group in one pass.']
+            if excluded_hosts | length > 0
+
+            else ['>>> APPROVE — all ' ~ (reachable_hosts | length) ~ ' host(s) responded, '
+                  ~ 'none pending reboot, ' ~ total_updates ~ ' update(s) ready to install.']
+          }}
+
+    - name: Warn when every host was excluded
+      ansible.builtin.debug:
+        msg: >-
+          >>> NOTE — no eligible hosts remain. Approving will install nothing.
+          Resolve the excluded hosts above and re-run the scan.
+      when: eligible_hosts | length == 0
+
+    # Published as workflow artifacts: AAP injects these as extra_vars into every
+    # downstream node, which is how 02_install.yml learns which hosts to touch.
+    - name: Publish eligible host list to downstream workflow nodes
+      ansible.builtin.set_stats:
+        data:
+          patch_eligible_hosts: "{{ eligible_hosts }}"
+          patch_excluded_hosts: "{{ excluded_hosts }}"
+        aggregate: false
+        per_host: false

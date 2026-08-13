@@ -18,35 +18,59 @@
         ask_inventory_on_launch: true
         extra_vars:
           require_approval: true
+        # Graph:  scan ──success──> approval ──approve──> install ──┐
+        #           │                  │                           │
+        #           └──failure─────────┴──deny/timeout─────────────┴──> report
+        #
+        # IMPORTANT: edge definitions (success_nodes / failure_nodes /
+        # always_nodes) MUST be nested under `related:`. The module reads them
+        # from workflow_node['related'] and silently ignores them if they are
+        # placed at the top level of the node — which leaves every node
+        # parentless, and AAP launches all parentless (root) nodes at once.
         workflow_nodes:
           - identifier: node_scan
             unified_job_template:
               name: "Windows Patch — Scan"
               type: job_template
-            success_nodes: [node_approval]
-            failure_nodes: [node_report_after_failure]
+            related:
+              success_nodes:
+                - identifier: node_approval
+              failure_nodes:
+                - identifier: node_report
+
           - identifier: node_approval
             unified_job_template:
               type: workflow_approval
               name: "Proceed with patch install?"
               description: |
-                Scan complete. Approve to proceed with installation.
-                Decline to skip directly to the report.
+                Scan complete. Review the "Fleet scan summary" output on the
+                Scan node before deciding.
+                Approve to proceed with installation.
+                Deny to skip installation and go straight to the report.
               timeout: 14400
-            success_nodes: [node_install]
-            failure_nodes: [node_report]
+            related:
+              # Approval denied or timed out follows the failure edge.
+              success_nodes:
+                - identifier: node_install
+              failure_nodes:
+                - identifier: node_report
+
           - identifier: node_install
             unified_job_template:
               name: "Windows Patch — Install"
               type: job_template
-            success_nodes: [node_report]
-            failure_nodes: [node_report]
-            always_nodes: []
+            related:
+              success_nodes:
+                - identifier: node_report
+              failure_nodes:
+                - identifier: node_report
+
           - identifier: node_report
             unified_job_template:
               name: "Windows Patch — Report"
               type: job_template
-          - identifier: node_report_after_failure
-            unified_job_template:
-              name: "Windows Patch — Report"
-              type: job_template
+            # node_report has three possible parents (scan-fail, approval-deny,
+            # install). false = "run when ANY parent path reaches me", which is
+            # what we want since only one of those paths ever fires per run.
+            # Setting this to true would mean the report never runs at all.
+            all_parents_must_converge: false

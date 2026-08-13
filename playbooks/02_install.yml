@@ -2,8 +2,16 @@
 # Windows Patch — Install
 # Applies updates, reboots if required, runs a verification scan, records results.
 # Honours per-group categories and serial batch size to prevent reboot storms.
+#
+# Host targeting: when run from the workflow, 01_scan.yml publishes
+# patch_eligible_hosts via set_stats and AAP injects it here as an extra_var —
+# so this play patches only hosts that responded to the scan and were not
+# already pending a reboot. Run standalone (no artifact present), it falls back
+# to the whole target group.
 - name: Install Windows updates on target hosts
-  hosts: "{{ target_group | default('windows_servers') }}"
+  # NOTE: no `true` flag on this default() — an empty patch_eligible_hosts means
+  # "nothing is safe to patch" and must stay empty, not fall back to the group.
+  hosts: "{{ patch_eligible_hosts | default(target_group | default('windows_servers')) }}"
   gather_facts: true
   serial: "{{ install_serial | default('20%') }}"
   any_errors_fatal: false

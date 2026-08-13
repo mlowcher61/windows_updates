@@ -113,7 +113,35 @@ Edit `inventories/production/hosts.yml` to list your hosts. Three groups drive b
 
 ### 4. First run
 
-Launch the workflow template `Windows Patch Cycle` from AAP. On prod hosts you will be prompted for approval before installation proceeds. The report appears as a job artifact and is emailed to the distribution list.
+Launch the workflow template `Windows Patch Cycle` from AAP. The Scan node runs
+first; when it finishes the workflow pauses at the approval node until a human
+approves or denies.
+
+**What the approver sees.** The Scan node ends with a `FLEET SCAN SUMMARY`
+block — hosts scanned, how many responded, how many are eligible, and the total
+missing updates split by Security and Critical — followed by a per-host
+breakdown and an explicit recommendation:
+
+| Recommendation | Meaning |
+| --- | --- |
+| `APPROVE` | Every host responded, none pending reboot, updates are ready |
+| `HOLD` | Some hosts need attention; approving still patches the healthy subset |
+| `DENY` | No updates found anywhere — deny to skip install and go to the report |
+
+**Eligibility policy.** A host is patched only if it responded to the scan *and*
+was not already pending a reboot beforehand. Unreachable and already-pending-reboot
+hosts are listed under `EXCLUDED FROM INSTALL` and skipped, so one dead host
+never blocks the rest of the fleet. The Scan job publishes the eligible list as
+the `patch_eligible_hosts` workflow artifact, which `02_install.yml` consumes as
+its host pattern. If nothing is eligible, the install targets **no** hosts rather
+than falling back to the whole group.
+
+If approval is denied — or if the scan or install fails — the workflow routes
+straight to the Report node, so every run produces a report either way. The
+report appears as a job artifact and is emailed to the distribution list.
+
+Running `playbooks/02_install.yml` outside the workflow has no artifact to read,
+so it falls back to targeting the whole `target_group`.
 
 ## Reading the report
 
@@ -161,7 +189,24 @@ See [docs/REPORT_METRICS.md](docs/REPORT_METRICS.md) for the exact scoring formu
 | `win_updates` hangs | Windows Update service paused | `Get-Service wuauserv` on host; restart if Stopped |
 | Report shows 0 hosts | Patch-facts dir not preserved between JTs | All three roles default `patch_facts_dir` to `$AWX_PRIVATE_DATA_DIR/patch_facts`; confirm that dir survives between the Scan, Install and Report jobs |
 | ISM SLA always failing | First run has no history | Posture computes from current scan only — accurate after 2+ cycles |
-| Approval node not appearing | `require_approval` var = false at workflow level | Set on prod group_vars or at launch time |
+| All workflow nodes launch simultaneously | Node edges declared at the top level of a `workflow_nodes` entry instead of under `related:` — the module silently ignores them, leaving every node parentless, and AAP launches all parentless nodes at once | In `aap/05_workflow_template.yml`, nest `success_nodes` / `failure_nodes` under `related:` and write targets as `- identifier: <name>` dicts, not bare strings |
+| Report node never runs | `all_parents_must_converge: true` on a node whose parents are mutually exclusive paths | Leave it `false` — the report has three possible parents (scan-fail, approval-deny, install) and only one path fires per run |
+| Install patched hosts you expected to be skipped | `patch_eligible_hosts` artifact not reaching the Install node | Confirm the Scan job's `set_stats` task ran and that the Install job template has `ask_variables_on_launch: true` |
+| Approval gate appears on every run, including dev | Expected — the approval node is unconditional. `require_approval` is set in group_vars but nothing reads it | See the note in [Known gaps](#known-gaps) |
+
+## Known gaps
+
+**`require_approval` is inert.** The variable is set in
+`inventories/production/group_vars/` (`prod: true`, `dev`/`sensitive`/`windows_servers: false`)
+and in `aap/07_schedules.yml`, but no playbook, role, or workflow node reads it.
+The approval node in `Windows Patch Cycle` is unconditional, so **every** run
+pauses for approval regardless of target group — including dev and scheduled
+runs. The table in [Environment behaviour](#3-inventory-groups) describing dev as
+"no approval" is aspirational, not current behaviour.
+
+AAP workflow approval nodes cannot be bypassed by an extra_var, so closing this
+gap means either accepting a single gate for all environments, or splitting into
+separate per-environment workflow templates.
 
 ## License
 
