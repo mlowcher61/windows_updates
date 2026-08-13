@@ -23,9 +23,16 @@ def _parse_iso(ts: str) -> datetime | None:
         return None
     try:
         # Accept trailing Z by replacing with +00:00 for fromisoformat.
-        return datetime.fromisoformat(str(ts).replace("Z", "+00:00"))
+        dt = datetime.fromisoformat(str(ts).replace("Z", "+00:00"))
     except (ValueError, TypeError):
         return None
+    # Timestamps from scan/install carry a Z and parse tz-aware, but the bare
+    # dates in files/os_lifecycle.yml ("2027-01-12") parse naive. Comparing the
+    # two raises "can't subtract offset-naive and offset-aware datetimes", so
+    # normalise to UTC here rather than at each comparison site.
+    if dt.tzinfo is None:
+        dt = dt.replace(tzinfo=timezone.utc)
+    return dt
 
 
 def _now() -> datetime:
