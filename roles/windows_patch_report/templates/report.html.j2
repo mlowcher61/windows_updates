@@ -117,8 +117,13 @@
         {% if hp.posture.merged.missing_updates %}
         <ul>
           {% for u in hp.posture.merged.missing_updates[:10] %}
-          <li>{{ u.kb_article_ids[0] if u.kb_article_ids else u.title | default('Untitled update') }}
-            ({{ u.categories | join(', ') if u.categories else 'uncategorized' }})</li>
+          {# win_updates returns the article list as 'kb' (already 'KB'-prefixed).
+             Guard every lookup with default([]): Ansible templates under
+             StrictUndefined, so a bare truthiness test on a key an update does
+             not carry (drivers and Defender definitions have no 'kb') raises
+             UndefinedError before any inline default can apply. #}
+          <li>{{ (u.kb | default([]) | join(', ')) or (u.title | default('Untitled update')) }}
+            ({{ (u.categories | default([]) | join(', ')) or 'uncategorized' }})</li>
           {% endfor %}
         </ul>
         {% endif %}
