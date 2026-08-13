@@ -18,6 +18,17 @@
         ask_inventory_on_launch: true
         extra_vars:
           require_approval: true
+        # One-shot graph reset. The module only reconciles association types
+        # that appear in this file (controller_api.py :: create_if_needed loops
+        # over the associations dict it is handed), so a deploy that fails
+        # partway through can leave stale edges behind that block every
+        # subsequent run — and removing the edge from this file makes it
+        # invisible to the module rather than deleting it.
+        #
+        # Re-run with -e workflow_rebuild=true to delete all nodes and rebuild
+        # the graph from scratch. Left false by default so normal deploys stay
+        # idempotent.
+        destroy_current_nodes: "{{ workflow_rebuild | default(false) | bool }}"
         # Graph:  scan ──success──> approval ──approve──> install ──always──┐
         #           │                  │                                    │
         #           └──failure─────────┴──deny/timeout────────────────────┴──> report
