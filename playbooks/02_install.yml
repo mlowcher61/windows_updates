@@ -17,3 +17,32 @@
   any_errors_fatal: false
   roles:
     - role: windows_patch_install
+
+# Each AAP job template runs in its own container with its own
+# AWX_PRIVATE_DATA_DIR, so the .install.json files the role wrote above are
+# discarded when this job ends. Republish them as workflow artifacts so the
+# Report node can actually read them.
+- name: Publish install facts to downstream workflow nodes
+  hosts: localhost
+  gather_facts: false
+  vars:
+    installed_hosts: >-
+      {{ patch_eligible_hosts
+         | default(groups[target_group | default('windows_servers')] | default([])) }}
+    install_facts: >-
+      {{ installed_hosts | map('extract', hostvars)
+         | selectattr('host_install_fact', 'defined')
+         | map(attribute='host_install_fact') | list }}
+  tasks:
+    - name: Publish install facts
+      ansible.builtin.set_stats:
+        # AAP passes artifacts down from every ancestor node, so the scan facts
+        # should already reach Report on their own. They are re-published here
+        # only when present, as a belt-and-braces measure — and never with an
+        # empty list, which would clobber the real ones.
+        data: >-
+          {{ {'patch_install_facts': install_facts}
+             | combine({'patch_scan_facts': patch_scan_facts}
+                       if (patch_scan_facts | default([]) | length > 0) else {}) }}
+        aggregate: false
+        per_host: false

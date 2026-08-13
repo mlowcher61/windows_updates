@@ -138,5 +138,10 @@
         data:
           patch_eligible_hosts: "{{ eligible_hosts }}"
           patch_excluded_hosts: "{{ excluded_hosts }}"
+          # The Report job runs in its own container with its own
+          # AWX_PRIVATE_DATA_DIR, so the .scan.json files written to disk by the
+          # role are gone by the time it starts. The facts have to travel as
+          # artifacts instead.
+          patch_scan_facts: "{{ scan_facts }}"
         aggregate: false
         per_host: false

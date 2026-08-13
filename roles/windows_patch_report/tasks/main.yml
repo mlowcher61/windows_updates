@@ -1,41 +1,69 @@
 ---
-- name: Locate patch-fact files written by scan and install plays
-  ansible.builtin.find:
-    paths: "{{ patch_facts_dir }}"
-    patterns: ["*.scan.json", "*.install.json"]
-    recurse: false
-  register: fact_files
+# Facts reach this role by one of two routes.
+#
+# Under an AAP workflow, Scan and Install each run as their own job template in
+# their own container with its own AWX_PRIVATE_DATA_DIR. The .scan.json and
+# .install.json files they write are destroyed with that container, so this job
+# can never read them off disk — the facts arrive as workflow artifacts instead
+# (published via set_stats, injected here as extra_vars).
+#
+# Run standalone via 99_full_cycle.yml, all three plays share one control node,
+# so the on-disk files are present and there are no artifacts. Prefer artifacts,
+# fall back to disk.
+- name: Collect facts delivered as workflow artifacts
+  ansible.builtin.set_fact:
+    artifact_facts: >-
+      {{ (patch_scan_facts | default([])) + (patch_install_facts | default([])) }}
+
+- name: Read facts from disk when not running under a workflow
+  when: artifact_facts | length == 0
+  block:
+
+    - name: Locate patch-fact files written by scan and install plays
+      ansible.builtin.find:
+        paths: "{{ patch_facts_dir }}"
+        patterns: ["*.scan.json", "*.install.json"]
+        recurse: false
+      register: fact_files
+
+    - name: Read all fact files content
+      ansible.builtin.slurp:
+        src: "{{ item }}"
+      loop: "{{ fact_files.files | map(attribute='path') | list }}"
+      register: slurped
+
+    - name: Decode on-disk facts
+      ansible.builtin.set_fact:
+        disk_facts: >-
+          {{ slurped.results
+             | map(attribute='content')
+             | map('b64decode')
+             | map('from_json')
+             | list }}
+
+- name: Settle on the fact source for this run
+  ansible.builtin.set_fact:
+    all_facts: >-
+      {{ artifact_facts if artifact_facts | length > 0
+         else (disk_facts | default([])) }}
 
 - name: Fail loudly if no facts were found
   ansible.builtin.fail:
     msg: |
-      No patch-fact files found in {{ patch_facts_dir }}.
-      Run the Scan job template (and optionally Install) before Report.
-  when: fact_files.files | length == 0
+      No patch facts available to report on.
 
-- name: Load patch-fact files into memory
+      Under an AAP workflow the Scan node publishes them as artifacts — check
+      that its "Publish eligible host list to downstream workflow nodes" task
+      ran, and that this job template has ask_variables_on_launch enabled so
+      artifacts are accepted.
+
+      Running standalone, this role reads {{ patch_facts_dir }} instead; run
+      the Scan play (and optionally Install) first, in the same job.
+  when: all_facts | length == 0
+
+- name: Group facts by host
   ansible.builtin.set_fact:
-    raw_facts: >-
-      {{ fact_files.files
-         | map(attribute='path')
-         | map('regex_replace', '^', '')
-         | list }}
-
-- name: Read all fact files content
-  ansible.builtin.slurp:
-    src: "{{ item }}"
-  loop: "{{ raw_facts }}"
-  register: slurped
-
-- name: Decode and group facts by host
-  ansible.builtin.set_fact:
-    fleet_facts: >-
-      {{ slurped.results
-         | map(attribute='content')
-         | map('b64decode')
-         | map('from_json')
-         | list
-         | groupby('hostname') }}
+    fleet_facts: "{{ all_facts | groupby('hostname') }}"
 
 - name: Compute per-host posture
   ansible.builtin.set_fact:
