@@ -8,6 +8,10 @@
       # credential attached to the job template (CONTROLLER_HOST /
       # CONTROLLER_USERNAME / CONTROLLER_PASSWORD).
       validate_certs: "{{ aap_validate_certs | default(false) }}"
+      # Without this, the collection's HTTP calls have no ceiling: a request
+      # that stalls mid-run blocks the job indefinitely instead of failing.
+      # Raise it with -e aap_request_timeout=<seconds> for very large runs.
+      request_timeout: "{{ aap_request_timeout | default(60) }}"
   tasks:
     - name: JT — Windows Patch — Scan
       ansible.controller.job_template:
