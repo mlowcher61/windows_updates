@@ -18,15 +18,21 @@
         ask_inventory_on_launch: true
         extra_vars:
           require_approval: true
-        # Graph:  scan ──success──> approval ──approve──> install ──┐
-        #           │                  │                           │
-        #           └──failure─────────┴──deny/timeout─────────────┴──> report
+        # Graph:  scan ──success──> approval ──approve──> install ──always──┐
+        #           │                  │                                    │
+        #           └──failure─────────┴──deny/timeout────────────────────┴──> report
         #
         # IMPORTANT: edge definitions (success_nodes / failure_nodes /
         # always_nodes) MUST be nested under `related:`. The module reads them
         # from workflow_node['related'] and silently ignores them if they are
         # placed at the top level of the node — which leaves every node
         # parentless, and AAP launches all parentless (root) nodes at once.
+        #
+        # ALSO IMPORTANT: a given parent→child pair may carry only ONE edge
+        # type. Listing the same child under both success_nodes and
+        # failure_nodes of one parent makes the API reject the second
+        # association with "Relationship not allowed." Use always_nodes when a
+        # child should run regardless of the parent's outcome.
         workflow_nodes:
           - identifier: node_scan
             unified_job_template:
@@ -60,9 +66,12 @@
               name: "Windows Patch — Install"
               type: job_template
             related:
-              success_nodes:
-                - identifier: node_report
-              failure_nodes:
+              # always_nodes, not success+failure: the report must run whether
+              # the install succeeded or failed, and the same parent→child pair
+              # cannot carry two edge types. Note that always_nodes is mutually
+              # exclusive with success_nodes/failure_nodes on the same parent —
+              # adding either one back here would be rejected.
+              always_nodes:
                 - identifier: node_report
 
           - identifier: node_report
@@ -74,3 +83,15 @@
             # what we want since only one of those paths ever fires per run.
             # Setting this to true would mean the report never runs at all.
             all_parents_must_converge: false
+
+          # Tombstone. This node used to exist as a duplicate of node_report on
+          # the scan-failure path; node_report now serves that path directly.
+          # destroy_current_nodes is false, so simply deleting the entry above
+          # would strand the node in AAP as an orphan root that fires on every
+          # run. This removes it. Safe to keep permanently — once the node is
+          # gone the module finds nothing to delete and reports no change.
+          - identifier: node_report_after_failure
+            unified_job_template:
+              name: "Windows Patch — Report"
+              type: job_template
+            state: absent
