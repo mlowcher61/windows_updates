@@ -1,0 +1,8 @@
+---
+# Reload rather than restart: a config change should never drop in-flight
+# requests, and nginx validates the new config before swapping workers.
+- name: Reload nginx
+  ansible.builtin.service:
+    name: nginx
+    state: reloaded
+  become: true

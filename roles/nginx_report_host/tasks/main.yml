@@ -1,0 +1,71 @@
+---
+- name: Install nginx
+  ansible.builtin.package:
+    name: nginx
+    state: present
+  become: true
+
+- name: Create the report docroot
+  ansible.builtin.file:
+    path: "{{ report_site_root }}"
+    state: directory
+    owner: "{{ report_site_user }}"
+    group: "{{ report_site_user }}"
+    mode: '0755'
+  become: true
+
+# SELinux and firewalld are both inactive on the AWS demo host this was built
+# against, so the two blocks below no-op there. They exist because the same role
+# has to survive a hardened RHEL box, where a missing port label or firewall rule
+# presents identically to the caller: nginx starts, and the browser times out.
+- name: Label the port for SELinux when enforcing
+  community.general.seport:
+    ports: "{{ report_site_port }}"
+    proto: tcp
+    setype: http_port_t
+    state: present
+  become: true
+  when: ansible_facts.selinux.status | default('disabled') == 'enabled'
+
+- name: Collect service state to decide on firewall handling
+  ansible.builtin.service_facts:
+
+- name: Open the report port when firewalld is running
+  ansible.posix.firewalld:
+    port: "{{ report_site_port }}/tcp"
+    permanent: true
+    immediate: true
+    state: enabled
+  become: true
+  when:
+    - report_site_manage_firewall | bool
+    - ansible_facts.services['firewalld.service'] is defined
+    - ansible_facts.services['firewalld.service'].state == 'running'
+
+- name: Deploy the report site vhost
+  ansible.builtin.template:
+    src: report-site.conf.j2
+    dest: /etc/nginx/conf.d/patch-reports.conf
+    owner: root
+    group: root
+    mode: '0644'
+  become: true
+  notify: Reload nginx
+
+# template's own validate: runs against the rendered temp file in isolation, and
+# a conf.d fragment can never pass that way — 'server {}' is only legal inside
+# 'http {}'. Validate the assembled config instead. This runs before the handler
+# flushes, so a broken vhost fails the play with nginx still serving the old
+# config rather than reloading into a bad state.
+- name: Validate the assembled nginx configuration
+  ansible.builtin.command: nginx -t
+  become: true
+  changed_when: false
+
+- name: Enable and start nginx
+  ansible.builtin.service:
+    name: nginx
+    state: started
+    enabled: true
+  become: true
+

@@ -1,0 +1,11 @@
+---
+galaxy_info:
+  role_name: nginx_report_host
+  author: mlowcher61
+  description: Serve Windows patch posture reports over nginx on a dedicated port
+  license: MIT
+  min_ansible_version: "2.15"
+  platforms:
+    - name: EL
+      versions: [8, 9]
+dependencies: []

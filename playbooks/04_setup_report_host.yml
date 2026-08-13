@@ -1,0 +1,12 @@
+---
+# Windows Patch — Set Up Report Host
+# Stands up nginx on the Linux host that publishes posture reports. Runs against
+# the report_hosts group, NOT the Windows fleet — see
+# inventories/production/group_vars/report_hosts.yml for the connection override.
+#
+# Idempotent: safe to re-run to reconcile config drift.
+- name: Set up the posture report web host
+  hosts: report_hosts
+  gather_facts: true
+  roles:
+    - role: nginx_report_host

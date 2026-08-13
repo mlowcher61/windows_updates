@@ -1,0 +1,26 @@
+# {{ ansible_managed }}
+# Posture report site. Managed by roles/nginx_report_host — edits here are lost
+# on the next run; change the role's defaults instead.
+server {
+    listen {{ report_site_port }};
+    listen [::]:{{ report_site_port }};
+    server_name {{ report_site_server_name }};
+
+    root {{ report_site_root }};
+
+    # Deliberately no index directive: an index.html would be served in place of
+    # the directory listing and hide the report archive, which is the point.
+    # The report filenames carry a UTC stamp, so the directory listing is the
+    # run history. exact_size off / localtime on make that listing readable.
+    autoindex {{ 'on' if report_site_autoindex else 'off' }};
+    autoindex_exact_size off;
+    autoindex_localtime on;
+
+    # The reports contain em-dashes and · separators. Without an explicit
+    # charset nginx labels them ISO-8859-1 and browsers render mojibake.
+    charset utf-8;
+
+    location / {
+        try_files $uri $uri/ =404;
+    }
+}

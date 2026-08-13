@@ -1,0 +1,23 @@
+---
+# Port the posture-report site listens on. Kept off 80 so this role can coexist
+# with anything already serving the default vhost on the same box.
+report_site_port: 8888
+
+# Docroot the Report job publishes rendered HTML/CSV into. Owned by nginx_user
+# so a later delivery step can write here over SSH without becoming root.
+report_site_root: /var/www/patch-reports
+
+# server_name for the vhost. '_' is nginx's catch-all — correct when the host is
+# reached by bare IP. Set to a real FQDN once one exists.
+report_site_server_name: _
+
+# Account nginx runs as on RHEL-family. Only override on distros that differ.
+report_site_user: nginx
+
+# Directory listing of the timestamped report archive. The filenames carry the
+# UTC stamp (posture-report-YYYYMMDDTHHMMSSZ.html), so the index IS the history.
+report_site_autoindex: true
+
+# Opened only when firewalld is actually running — see tasks/main.yml. Set false
+# if a host firewall is managed elsewhere.
+report_site_manage_firewall: true

@@ -3,6 +3,11 @@
 .fact_cache/
 .ansible/
 
+# Collections installed by ansible-galaxy into the repo's collections_path.
+# Build artifacts — collections/requirements.yml is the source of truth, and the
+# EE installs from it at build time.
+collections/ansible_collections/
+
 # Local AAP credentials (never commit)
 aap/secrets.yml
 aap/*.local.yml

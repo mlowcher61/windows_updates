@@ -1,0 +1,17 @@
+---
+# group_vars/all.yml sets winrm connection defaults for the Windows fleet. The
+# report web host is Linux, so every one of those has to be overridden here or
+# the play fails on a winrm handshake against port 5986.
+ansible_connection: ssh
+ansible_port: 22
+ansible_user: ec2-user
+
+# Cleared explicitly: group_vars/all.yml sets these for winrm and they are
+# meaningless (and confusing in verbose output) on an ssh connection.
+ansible_winrm_transport: null
+ansible_winrm_server_cert_validation: null
+ansible_winrm_kerberos_delegation: null
+
+# Under AAP the SSH key comes from the Machine credential attached to the job
+# template — never from a path in git. Running locally, pass it explicitly:
+#   --private-key ~/.ssh/aws4326.pem
