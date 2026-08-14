@@ -5,7 +5,19 @@
 
   vars:
     username: Administrator
+    # Current password used for the initial WinRM login
+    initial_password: ''
+
+    # New password that will be assigned to Administrator
     admin_password: ''
+
+    ansible_connection: winrm
+    ansible_user: 'Administrator'
+    ansible_password: "{{ initial_password }}"
+    ansible_port: 5986
+    ansible_winrm_scheme: https
+    ansible_winrm_transport: credssp
+    ansible_winrm_server_cert_validation: ignore
 
   tasks:
     - name: Change Administrator password
