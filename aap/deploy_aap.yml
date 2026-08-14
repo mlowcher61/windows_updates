@@ -6,7 +6,7 @@
 # ansible.controller modules read automatically -- no extra-vars needed.
 - import_playbook: 00_credential_types.yml
 - import_playbook: 01_credentials.yml
-- import_playbook: 02_project.yml
+# - import_playbook: 02_project.yml
 # - import_playbook: 03_inventory_sources.yml
 - import_playbook: 04_job_templates.yml
 - import_playbook: 05_workflow_template.yml
