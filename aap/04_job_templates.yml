@@ -20,8 +20,8 @@
         project: Windows_updates
         inventory: AWS Inventory
         playbook: playbooks/01_scan.yml
-        credentials: [win_cred]
-        execution_environment: windows_ee
+        credentials: [cred_winrm_prod]
+        execution_environment: windows_patching_ee
         ask_variables_on_launch: true
         survey_enabled: true
         survey_spec:
@@ -42,8 +42,8 @@
         project: Windows_updates
         inventory: AWS Inventory
         playbook: playbooks/02_install.yml
-        credentials: [win_cred]
-        execution_environment: windows_ee
+        credentials: [cred_winrm_prod, cred_wsus_corporate]
+        execution_environment: windows_patching_ee
         ask_limit_on_launch: true
         ask_variables_on_launch: true
         survey_enabled: true
@@ -75,8 +75,8 @@
         project: Windows_updates
         inventory: AWS Inventory
         playbook: playbooks/03_report.yml
-        credentials: [win_cred]
-        execution_environment: windows_ee
+        credentials: [cred_smtp_relay]
+        execution_environment: windows_patching_ee
         ask_variables_on_launch: true
         survey_enabled: true
         survey_spec:
