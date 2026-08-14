@@ -1,0 +1,16 @@
+---
+- name: Change Windows Administrator password
+  hosts: all
+  gather_facts: false
+
+  vars:
+    username: Administrator
+    admin_password: ''
+
+  tasks:
+    - name: Change Administrator password
+      ansible.windows.win_user:
+        name: "{{ username }}"
+        password: "{{ admin_password }}"
+        update_password: always
+        state: present
