@@ -17,7 +17,7 @@
       ansible.controller.job_template:
         name: "Windows Patch — Scan"
         organization: Systems
-        project: Windows_updates
+        project: Windows_Updates
         inventory: AWS Inventory
         playbook: playbooks/01_scan.yml
         credentials: [cred_winrm_prod]
@@ -39,7 +39,7 @@
       ansible.controller.job_template:
         name: "Windows Patch — Install"
         organization: Systems
-        project: Windows_updates
+        project: Windows_Updates
         inventory: AWS Inventory
         playbook: playbooks/02_install.yml
         credentials: [cred_winrm_prod, cred_wsus_corporate]
@@ -72,7 +72,7 @@
       ansible.controller.job_template:
         name: "Windows Patch — Report"
         organization: Systems
-        project: Windows_updates
+        project: Windows_Updates
         inventory: AWS Inventory
         playbook: playbooks/03_report.yml
         credentials: [cred_smtp_relay]
