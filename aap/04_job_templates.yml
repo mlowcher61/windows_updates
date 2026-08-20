@@ -68,6 +68,9 @@
               default: ""
               required: false
 
+    # cred_report_host_ssh is what lets the second play in 03_report.yml reach the
+    # web host. Without it the reports render inside the EE container and die
+    # with it.
     - name: JT — Windows Patch — Report
       ansible.controller.job_template:
         name: "Windows Patch — Report"
@@ -75,16 +78,55 @@
         project: Windows_Updates
         inventory: AWS Inventory
         playbook: playbooks/03_report.yml
-        credentials: [cred_smtp_relay]
+        credentials: [cred_smtp_relay, cred_report_host_ssh]
         execution_environment: windows_patching_ee
         ask_variables_on_launch: true
         survey_enabled: true
         survey_spec:
           name: Report distribution
-          description: Who receives the report email
+          description: Who receives the report email, and where it is published
           spec:
             - question_name: Recipient list (comma-separated emails)
               variable: report_recipients_raw
               type: text
               default: "mlowcher@redhat.com"
+              required: true
+            # Must be a survey answer, not a group_vars entry: the publish play
+            # templates this into its `hosts:` line at parse time, and the
+            # controller's own inventory does not read group_vars from this repo.
+            - question_name: Report web host (inventory host or group name)
+              variable: report_web_host
+              type: text
+              default: "report_hosts"
+              required: true
+            # Consumed by the publish play in THIS playbook, which is why it is
+            # asked here and not on the Set Up Report Host template.
+            - question_name: Report runs to keep on the web host (0 = keep all)
+              variable: report_site_retention_count
+              type: integer
+              default: 4
+              required: true
+
+    # Stands up nginx on the report web host. Run once before the first Report
+    # job; idempotent, so re-running just reconciles drift.
+    - name: JT — Windows Patch — Set Up Report Host
+      ansible.controller.job_template:
+        name: "Windows Patch — Set Up Report Host"
+        organization: Systems
+        project: Windows_Updates
+        inventory: AWS Inventory
+        playbook: playbooks/04_setup_report_host.yml
+        credentials: [cred_report_host_ssh]
+        execution_environment: windows_patching_ee
+        ask_limit_on_launch: true
+        ask_variables_on_launch: true
+        survey_enabled: true
+        survey_spec:
+          name: Report host options
+          description: How the report site is exposed
+          spec:
+            - question_name: Listen port
+              variable: report_site_port
+              type: integer
+              default: 8888
               required: true

@@ -36,7 +36,14 @@ This repository delivers, end-to-end:
 │                                                          ▼              │
 │                                                  HTML + CSV artifact    │
 │                                                  + email to admins      │
-└──────────────────────────────────────────────────────────────────────────┘
+│                                                          │              │
+└──────────────────────────────────────────────────────────┼──────────────┘
+                                                           ▼
+                                              ┌────────────────────────┐
+                                              │  Report web host       │
+                                              │  nginx :8888           │
+                                              │  /var/www/patch-reports│
+                                              └────────────────────────┘
 ```
 
 ## Prerequisites
@@ -47,6 +54,7 @@ This repository delivers, end-to-end:
 | Target Windows Server | 2016 / 2019 / 2022 / 2025 | 2012 R2 still works (ESU only — flagged in report) |
 | WinRM | Listener on 5986 (HTTPS) | Kerberos preferred; NTLM supported |
 | Execution Environment | Custom EE in `execution-environment/` | Includes `pywinrm`, `requests-kerberos`, `jmespath` |
+| Report web host (optional) | Any RHEL-family Linux host | Serves reports over nginx on 8888; reachable by SSH with sudo. Omit it and reports are email-only |
 
 ## Quick start (demo — single host)
 
@@ -95,11 +103,21 @@ This creates:
 
 ### 2. Enter credentials in AAP
 
-After `deploy_aap.yml` runs, open AAP → Resources → Credentials. Four credentials need values filled in:
+After `deploy_aap.yml` runs, open AAP → Resources → Credentials. Five credentials need values filled in:
 - `cred_winrm_prod` — Windows service account for prod hosts
 - `cred_winrm_dev` — Windows service account for dev hosts
-- `cred_wsus_corporate` (optional) — leave empty to use Microsoft Update
+- `cred_wsus_corporate` (optional) — see note below
 - `cred_smtp_relay` — relay used for the report email
+- `cred_report_host_ssh` — SSH key for the report web host; needs sudo there
+
+> **Note on `cred_wsus_corporate`.** The `wsus_source` credential type injects
+> `wsus_server_url` and `wsus_proxy` as extra vars, but **no role currently reads
+> them** — `ansible.windows.win_updates` has no URL parameter, so pointing hosts
+> at WSUS means writing the `WUServer` policy registry keys and setting
+> `server_selection: managed_server`. Until that is wired up the field is inert:
+> leave it empty, or put a plausible value such as `http://wsus.example.com:8530`
+> (8530 is the WSUS HTTP default, 8531 HTTPS) if you want it populated for a
+> demo. Nothing will attempt to reach it.
 
 ### 3. Adapt the inventory
 
@@ -111,7 +129,53 @@ Edit `inventories/production/hosts.yml` to list your hosts. Three groups drive b
 | `dev` | No approval, install all update categories |
 | `sensitive` | Scan-only — never installs, only reports |
 
-### 4. First run
+### 4. Set up the report web host
+
+The rendered HTML only exists inside the execution environment's container,
+which AAP destroys when the job ends. To keep reports around, the Report job
+publishes them to a Linux host running nginx.
+
+Add that host to the `report_hosts` group in `inventories/production/hosts.yml`
+(it sits outside `windows_servers` so it never lands in a patch play's host
+pattern), then launch **`Windows Patch — Set Up Report Host`** once. It installs
+nginx, creates `/var/www/patch-reports`, labels the port for SELinux, opens
+firewalld if it is running, and serves the docroot on **port 8888**. The job is
+idempotent, so re-running it just reconciles drift.
+
+| Setting | Default | Where |
+| --- | --- | --- |
+| Listen port | `8888` | Survey on the Set Up Report Host template |
+| Docroot | `/var/www/patch-reports` | `report_site_root` |
+| Which host serves reports | `report_hosts` (the whole group) | `report_web_host` survey on the Report template |
+| Report runs kept | `4` | `report_site_retention_count` survey on the Report template |
+
+**Choosing the server.** `report_web_host` takes either an inventory host name
+or a group name. Set it to a single host to pin one box:
+
+```bash
+ansible-playbook -i inventories/production/hosts.yml playbooks/03_report.yml \
+  -e report_web_host=report-web-01
+```
+
+It must arrive as an extra var — the publish play templates it into its `hosts:`
+line at parse time, and AAP's own inventory does not read `group_vars` from this
+repo, so a `group_vars` entry would work locally and silently do nothing in AAP.
+
+**Reading the reports.** Two URLs:
+
+- `http://<report host>:8888/latest.html` — the most recent run, stable link
+- `http://<report host>:8888/` — the archive; filenames carry a UTC stamp, so
+  the directory listing *is* the run history
+
+Older runs are pruned to the newest `report_site_retention_count` (4) of each
+file type, so the listing stays readable. Set it to `0` to keep everything.
+`latest.html` is never pruned.
+
+Publication is **best-effort**: the email has already gone out by the time it
+runs, so an unreachable web host logs a warning and the job still succeeds
+rather than turning your patching workflow red.
+
+### 5. First run
 
 Launch the workflow template `Windows Patch Cycle` from AAP. The Scan node runs
 first; when it finishes the workflow pauses at the approval node until a human

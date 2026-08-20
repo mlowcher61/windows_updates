@@ -21,3 +21,12 @@ report_site_autoindex: true
 # Opened only when firewalld is actually running — see tasks/main.yml. Set false
 # if a host firewall is managed elsewhere.
 report_site_manage_firewall: true
+
+# How many report runs to keep in the docroot. Every Report job drops another
+# timestamped HTML+CSV pair here, so without a ceiling the archive — and the
+# autoindex listing that IS the run history — grows forever. Pruning happens in
+# the publish play of playbooks/03_report.yml, not in this role; the value lives
+# here because it describes the site, and the publish play reads it as a default.
+# Counted per file type, so 4 means the 4 newest HTML *and* the 4 newest CSV.
+# Set to 0 to keep everything.
+report_site_retention_count: 4

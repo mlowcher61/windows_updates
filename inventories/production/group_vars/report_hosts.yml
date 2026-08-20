@@ -14,4 +14,4 @@ ansible_winrm_kerberos_delegation: null
 
 # Under AAP the SSH key comes from the Machine credential attached to the job
 # template — never from a path in git. Running locally, pass it explicitly:
-#   --private-key ~/.ssh/aws4326.pem
+#   --private-key ~/.ssh/aws81926.pem

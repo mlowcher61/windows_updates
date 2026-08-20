@@ -8,3 +8,129 @@
   connection: local
   roles:
     - role: windows_patch_report
+
+# Publishes the rendered reports to the nginx host stood up by
+# 04_setup_report_host.yml. Without this play the HTML only ever exists inside
+# the execution environment's container, which is destroyed when the job ends.
+#
+# report_web_host names the target. It is read at playbook-parse time, so it
+# resolves from extra_vars (the AAP survey) — NOT from group_vars, which the
+# controller's own inventory does not load from this repo. It accepts a host
+# name or a group name; the default is the whole report_hosts group.
+#
+# An unmatched pattern is a warning, not an error, so a demo with no report host
+# configured still completes normally.
+- name: Publish posture reports to the web host
+  hosts: "{{ report_web_host | default('report_hosts') }}"
+  gather_facts: false
+  # Publication is best-effort by design: the email has already gone out by this
+  # point, so an SSH problem on the web host must not turn the patching job red.
+  # block/rescue below catches task failures; this catches connection failures,
+  # which rescue does not see (an unreachable host is dropped from the play).
+  ignore_unreachable: true
+  vars:
+    # These three mirror roles/nginx_report_host/defaults/main.yml. This play does
+    # not run that role, so its defaults are not in scope — the defaults are
+    # repeated here and overridden by inventory vars of the same name when set.
+    report_publish_dest: "{{ report_site_root | default('/var/www/patch-reports') }}"
+    report_publish_owner: "{{ report_site_user | default('nginx') }}"
+    report_publish_retention: "{{ report_site_retention_count | default(4) }}"
+    # Rendered by the play above, on localhost. Empty if that play bailed out.
+    report_publish_files: "{{ hostvars['localhost']['report_files'] | default([]) }}"
+    # Regexes use [.] rather than \. throughout: these are double-quoted YAML
+    # scalars, where a backslash is an escape character and \. is not a legal one.
+    report_publish_html: "{{ report_publish_files | select('match', '.*[.]html$') | first | default('') }}"
+  tasks:
+
+    - name: Publish the rendered reports and prune the archive
+      when: report_publish_files | length > 0
+      block:
+
+        # The docroot normally already exists from 04_setup_report_host.yml. This
+        # keeps the play self-sufficient if the reports land before that job runs.
+        - name: Ensure the report docroot exists
+          ansible.builtin.file:
+            path: "{{ report_publish_dest }}"
+            state: directory
+            owner: "{{ report_publish_owner }}"
+            group: "{{ report_publish_owner }}"
+            mode: '0755'
+          become: true
+
+        # become is required: the docroot is owned by the nginx account, and the
+        # SSH user from the Machine credential (ec2-user on the demo host) is not
+        # a member of that group.
+        - name: Publish this run's HTML and CSV
+          ansible.builtin.copy:
+            src: "{{ item }}"
+            dest: "{{ report_publish_dest }}/{{ item | basename }}"
+            owner: "{{ report_publish_owner }}"
+            group: "{{ report_publish_owner }}"
+            mode: '0644'
+          become: true
+          loop: "{{ report_publish_files }}"
+          loop_control:
+            label: "{{ item | basename }}"
+
+        # A stable URL to bookmark and to put on a slide:
+        #   http://<report host>:8888/latest.html
+        # The timestamped archive stays browsable at / via the vhost's autoindex.
+        # Named latest.html rather than index.html on purpose — an index file
+        # would suppress that listing, which is the run history.
+        - name: Publish a stable latest.html pointer
+          ansible.builtin.copy:
+            src: "{{ report_publish_dest }}/{{ report_publish_html | basename }}"
+            dest: "{{ report_publish_dest }}/latest.html"
+            remote_src: true
+            owner: "{{ report_publish_owner }}"
+            group: "{{ report_publish_owner }}"
+            mode: '0644'
+          become: true
+
+        - name: Find the published report archive
+          ansible.builtin.find:
+            paths: "{{ report_publish_dest }}"
+            patterns:
+              - 'posture-report-*.html'
+              - 'posture-report-*.csv'
+            recurse: false
+          register: published_reports
+
+        # Sorted by filename, not mtime: the UTC stamp in
+        # posture-report-YYYYMMDDTHHMMSSZ.* sorts lexicographically in
+        # chronological order, and unlike mtime it survives a file copy.
+        # HTML and CSV are pruned as separate lists so a run is never left as a
+        # half-pair. latest.html cannot be caught by either pattern.
+        # ansible-lint renders this expression with report_publish_retention out
+        # of scope, so the slice index arrives as Undefined and it reports
+        # "slice indices must be integers". At run time the var is always set and
+        # `| int` guarantees an integer — including when an AAP survey delivers
+        # it as the string "4". Verified against 0, "2", and an empty archive.
+        - name: Select report runs beyond the retention window  # noqa: jinja[invalid]
+          ansible.builtin.set_fact:
+            reports_to_prune: >-
+              {{ (archive | select('match', '.*[.]html$') | list)[(report_publish_retention | int):]
+                 + (archive | select('match', '.*[.]csv$') | list)[(report_publish_retention | int):] }}
+          vars:
+            archive: "{{ published_reports.files | map(attribute='path') | sort | reverse | list }}"
+          when: report_publish_retention | int > 0
+
+        - name: Prune report runs beyond the retention window
+          ansible.builtin.file:
+            path: "{{ item }}"
+            state: absent
+          become: true
+          loop: "{{ reports_to_prune | default([]) }}"
+          loop_control:
+            label: "{{ item | basename }}"
+
+      rescue:
+
+        - name: Warn that publication failed
+          ansible.builtin.debug:
+            msg: |
+              WARNING: could not publish reports to {{ inventory_hostname }}.
+
+              The report email was still sent and the job is being allowed to
+              succeed. Check that this host is reachable, that the SSH user has
+              sudo, and that 04_setup_report_host.yml has run against it.

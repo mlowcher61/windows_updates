@@ -106,6 +106,16 @@
     dest: "{{ report_output_dir }}/email-summary-{{ report_stamp }}.html"
     mode: '0644'
 
+# report_output_dir is a role default, so it evaporates when this role ends —
+# a later play in the same playbook cannot see it. The publish play in
+# 03_report.yml reads these paths off localhost's facts instead, which do
+# survive the play boundary.
+- name: Record rendered report paths for downstream publication
+  ansible.builtin.set_fact:
+    report_files:
+      - "{{ report_output_dir }}/posture-report-{{ report_stamp }}.html"
+      - "{{ report_output_dir }}/posture-report-{{ report_stamp }}.csv"
+
 - name: Convert recipient survey input into a list
   ansible.builtin.set_fact:
     report_recipients: "{{ (report_recipients_raw | default('')).split(',') | map('trim') | select | list }}"
