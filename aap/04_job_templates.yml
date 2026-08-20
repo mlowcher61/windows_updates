@@ -38,7 +38,7 @@
     - name: JT — Windows Patch — Install
       ansible.controller.job_template:
         name: "Windows Patch — Install"
-        organization: Default
+        organization: Systems
         project: Windows_updates
         inventory: AWS Inventory
         playbook: playbooks/02_install.yml
@@ -71,7 +71,7 @@
     - name: JT — Windows Patch — Report
       ansible.controller.job_template:
         name: "Windows Patch — Report"
-        organization: Default
+        organization: Systems
         project: Windows_updates
         inventory: AWS Inventory
         playbook: playbooks/03_report.yml
