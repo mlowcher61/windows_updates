@@ -16,7 +16,7 @@
     - name: JT — Windows Patch — Scan
       ansible.controller.job_template:
         name: "Windows Patch — Scan"
-        organization: Default
+        organization: Systems
         project: Windows_updates
         inventory: AWS Inventory
         playbook: playbooks/01_scan.yml
