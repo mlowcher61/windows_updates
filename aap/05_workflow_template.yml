@@ -14,7 +14,16 @@
 #
 # ansible.controller.workflow_job_template_node builds its association list once
 # and issues a single create/update per node, so the double lookups and the
-# repeated reconciliation both go away (~40 calls -> ~24).
+# repeated reconciliation both go away (~40 calls -> ~27).
+#
+# THE APPROVAL NODE NEEDS TWO TASKS. workflow_job_template_node reuses the
+# node's association list when it creates the approval template, building
+# /workflow_approval_templates/<id>/success_nodes/ -- an endpoint that does not
+# exist -- so passing approval_node together with success_nodes/failure_nodes
+# fails with "The requested object could not be found at ...". Create the
+# approval node first, then set its edges in a separate task that omits
+# approval_node. (The old workflow_nodes module avoided this by always deferring
+# edges to a second pass.)
 #
 # NODE ORDER IS LOAD-BEARING. The node module resolves success_nodes /
 # failure_nodes / always_nodes by identifier and calls fail_json if a referenced
@@ -31,6 +40,13 @@
   gather_facts: false
   vars:
     wf_name: "Windows Patch Cycle"
+    # Set explicitly on every node task below. The group/ module_defaults entry
+    # is NOT reaching ansible.controller.workflow_job_template_node in the
+    # execution environment -- a failed run reported request_timeout: 10 rather
+    # than the 60 configured there -- so relying on it silently loses both
+    # settings.
+    aap_vc: "{{ aap_validate_certs | default(false) }}"
+    aap_rt: "{{ aap_request_timeout | default(60) }}"
     # `organization` is deliberately NOT passed to the node tasks below: the
     # node module only uses it to disambiguate the workflow lookup, and
     # supplying it costs an extra resolve_name_to_id call per node. The
@@ -67,6 +83,8 @@
 
     - name: Node — report
       ansible.controller.workflow_job_template_node:
+        validate_certs: "{{ aap_vc }}"
+        request_timeout: "{{ aap_rt }}"
         workflow_job_template: "{{ wf_name }}"
         identifier: node_report
         unified_job_template: "Windows Patch — Report"
@@ -79,6 +97,8 @@
 
     - name: Node — install
       ansible.controller.workflow_job_template_node:
+        validate_certs: "{{ aap_vc }}"
+        request_timeout: "{{ aap_rt }}"
         workflow_job_template: "{{ wf_name }}"
         identifier: node_install
         unified_job_template: "Windows Patch — Install"
@@ -91,6 +111,8 @@
 
     - name: Node — approval gate
       ansible.controller.workflow_job_template_node:
+        validate_certs: "{{ aap_vc }}"
+        request_timeout: "{{ aap_rt }}"
         workflow_job_template: "{{ wf_name }}"
         identifier: node_approval
         # approval_node and unified_job_template are mutually exclusive. Using
@@ -103,6 +125,16 @@
             Approve to proceed with installation.
             Deny to skip installation and go straight to the report.
           timeout: 14400
+
+    # Separate task, NOT merged into the one above -- see THE APPROVAL NODE
+    # NEEDS TWO TASKS at the top of this file. Omitting approval_node here keeps
+    # the associations pointed at the node endpoint, where they belong.
+    - name: Edges — approval gate
+      ansible.controller.workflow_job_template_node:
+        validate_certs: "{{ aap_vc }}"
+        request_timeout: "{{ aap_rt }}"
+        workflow_job_template: "{{ wf_name }}"
+        identifier: node_approval
         # Denied or timed-out approvals follow the failure edge.
         success_nodes:
           - node_install
@@ -111,6 +143,8 @@
 
     - name: Node — scan
       ansible.controller.workflow_job_template_node:
+        validate_certs: "{{ aap_vc }}"
+        request_timeout: "{{ aap_rt }}"
         workflow_job_template: "{{ wf_name }}"
         identifier: node_scan
         unified_job_template: "Windows Patch — Scan"
@@ -131,6 +165,8 @@
     # change:  -e workflow_prune=true
     - name: Prune the retired node_report_after_failure node
       ansible.controller.workflow_job_template_node:
+        validate_certs: "{{ aap_vc }}"
+        request_timeout: "{{ aap_rt }}"
         workflow_job_template: "{{ wf_name }}"
         identifier: node_report_after_failure
         state: absent
