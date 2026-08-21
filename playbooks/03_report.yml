@@ -13,10 +13,13 @@
 # 04_setup_report_host.yml. Without this play the HTML only ever exists inside
 # the execution environment's container, which is destroyed when the job ends.
 #
-# report_web_host names the target. It is read at playbook-parse time, so it
-# resolves from extra_vars (the AAP survey) — NOT from group_vars, which the
-# controller's own inventory does not load from this repo. It accepts a host
-# name or a group name; the default is the whole report_hosts group.
+# report_web_host selects the target from the AAP inventory attached to this job
+# template ("AWS Inventory"). It is read at playbook-parse time, so it resolves
+# from extra_vars (the AAP survey) — NOT from group_vars, which the controller's
+# own inventory does not load from this repo. It accepts an inventory host name
+# or a group name; the default is the report_hosts group, which you create
+# inside AWS Inventory (by hand, or from a constructed/tag rule such as
+# tag_Role_report).
 #
 # An unmatched pattern is a warning, not an error, so a demo with no report host
 # configured still completes normally.
@@ -29,6 +32,16 @@
   # which rescue does not see (an unreachable host is dropped from the play).
   ignore_unreachable: true
   vars:
+    # The report host is Linux but shares AWS Inventory with the Windows fleet,
+    # so the inventory may carry winrm defaults on `all`. Play vars outrank
+    # inventory vars, so these force ssh regardless of what the inventory says.
+    # They mirror playbooks/04_setup_report_host.yml — see the longer note there
+    # for why ansible_user is deliberately left to the Machine credential.
+    ansible_connection: ssh
+    ansible_port: "{{ report_host_ssh_port | default(22) }}"
+    ansible_winrm_transport: null
+    ansible_winrm_server_cert_validation: null
+    ansible_winrm_kerberos_delegation: null
     # These three mirror roles/nginx_report_host/defaults/main.yml. This play does
     # not run that role, so its defaults are not in scope — the defaults are
     # repeated here and overridden by inventory vars of the same name when set.

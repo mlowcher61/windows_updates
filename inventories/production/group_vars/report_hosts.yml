@@ -1,7 +1,13 @@
 ---
+# LOCAL ansible-core / CLI runs only. AAP never reads this file — it writes the
+# job's inventory to /runner/inventory/, and Ansible only auto-loads group_vars/
+# adjacent to the inventory source or the playbook. The same overrides therefore
+# also live in the play vars of playbooks/03_report.yml and
+# playbooks/04_setup_report_host.yml, which is what makes them work under AAP.
+#
 # group_vars/all.yml sets winrm connection defaults for the Windows fleet. The
 # report web host is Linux, so every one of those has to be overridden here or
-# the play fails on a winrm handshake against port 5986.
+# a local play fails on a winrm handshake against port 5986.
 ansible_connection: ssh
 ansible_port: 22
 ansible_user: ec2-user

@@ -2,7 +2,10 @@
 version: 3
 images:
   base_image:
-    name: registry.redhat.io/ansible-automation-platform-24/ee-supported-rhel9:latest
+    # AAP 2.7 supported EE. Namespace tracks the platform version — bump this
+    # segment (…-27 → …-28) when you move to a new AAP release, or the EE
+    # ships an ansible-core older than the platform expects.
+    name: registry.redhat.io/ansible-automation-platform-27/ee-supported-rhel9:latest
 dependencies:
   python: requirements.txt
   galaxy: ../collections/requirements.yml

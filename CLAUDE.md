@@ -7,11 +7,14 @@ this repository.
 
 An AAP-driven Windows Server patching solution with security-posture reporting.
 Three roles (scan / install / report), four playbooks, and AAP config-as-code
-under `aap/` using the `ansible.platform` collection (not `ansible.controller`).
+under `aap/`. Targets **AAP 2.7**, not ansible-core.
 
 ## Local conventions
 
-- Always use `ansible.platform` for AAP CaC, never `ansible.controller`
+- Prefer `ansible.platform` for AAP CaC. It only ships gateway/identity objects
+  (org, team, user, role, service*), so job templates, projects, credentials,
+  inventories, schedules and notifications must still use `ansible.controller` —
+  see the note in `collections/requirements.yml`
 - Use **certified** collections (`ansible.windows`) over community where both exist
 - Credentials live in AAP custom credential types — never write vaulted files
   into git

@@ -17,7 +17,7 @@
       ansible.controller.workflow_job_template:
         name: "Windows Patch Cycle"
         organization: Default
-        inventory: AWS Inventory
+        inventory: "{{ aap_inventory_name | default('AWS Inventory') }}"
         ask_variables_on_launch: true
         ask_inventory_on_launch: true
         extra_vars:

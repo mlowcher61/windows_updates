@@ -1,12 +1,37 @@
 ---
 # Windows Patch — Set Up Report Host
 # Stands up nginx on the Linux host that publishes posture reports. Runs against
-# the report_hosts group, NOT the Windows fleet — see
-# inventories/production/group_vars/report_hosts.yml for the connection override.
+# the report host selected from the AAP inventory attached to this job template
+# ("AWS Inventory"), NOT the Windows fleet.
+#
+# report_web_host names the target. It is read at playbook-parse time, so it
+# resolves from extra_vars (the AAP survey) — NOT from group_vars, which the
+# controller's own inventory does not load from this repo. It accepts an
+# inventory host name or a group name; the default is the report_hosts group,
+# which you create inside AWS Inventory (by hand, or from a constructed/tag
+# rule such as tag_Role_report).
 #
 # Idempotent: safe to re-run to reconcile config drift.
 - name: Set up the posture report web host
-  hosts: report_hosts
+  hosts: "{{ report_web_host | default('report_hosts') }}"
   gather_facts: true
+  vars:
+    # The report host is Linux but shares AWS Inventory with the Windows fleet,
+    # so the inventory may carry winrm defaults on `all`. Play vars outrank
+    # inventory vars, so these force ssh regardless of what the inventory says.
+    #
+    # They used to live in inventories/production/group_vars/report_hosts.yml.
+    # That file still serves local ansible-core runs, but AAP never reads it —
+    # AAP writes the job's inventory to /runner/inventory/, and Ansible only
+    # auto-loads group_vars/ adjacent to the inventory source or the playbook.
+    #
+    # ansible_user is deliberately absent: play vars also outrank the username
+    # injected by the cred_report_host_ssh Machine credential, so setting it
+    # here would override the credential. Locally, pass --user instead.
+    ansible_connection: ssh
+    ansible_port: "{{ report_host_ssh_port | default(22) }}"
+    ansible_winrm_transport: null
+    ansible_winrm_server_cert_validation: null
+    ansible_winrm_kerberos_delegation: null
   roles:
     - role: nginx_report_host

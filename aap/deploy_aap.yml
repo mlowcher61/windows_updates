@@ -7,7 +7,11 @@
 - import_playbook: 00_credential_types.yml
 - import_playbook: 01_credentials.yml
 # - import_playbook: 02_project.yml
-# - import_playbook: 03_inventory_sources.yml
+# No inventory CaC here on purpose. The inventory is supplied outside this
+# repo ("AWS Inventory") and attached to the job templates by name — see
+# aap_inventory_name in 04_job_templates.yml. The old 03_inventory_sources.yml
+# built a controller inventory from inventories/production/hosts.yml, which is
+# now a local ansible-core convenience only.
 - import_playbook: 04_job_templates.yml
 - import_playbook: 05_workflow_template.yml
 - import_playbook: 06_notification_templates.yml

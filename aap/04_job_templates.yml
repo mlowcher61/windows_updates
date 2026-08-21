@@ -18,7 +18,7 @@
         name: "Windows Patch — Scan"
         organization: Systems
         project: Windows_Updates
-        inventory: AWS Inventory
+        inventory: "{{ aap_inventory_name | default('AWS Inventory') }}"
         playbook: playbooks/01_scan.yml
         credentials: [cred_winrm_prod]
         execution_environment: windows_patching_ee
@@ -40,7 +40,7 @@
         name: "Windows Patch — Install"
         organization: Systems
         project: Windows_Updates
-        inventory: AWS Inventory
+        inventory: "{{ aap_inventory_name | default('AWS Inventory') }}"
         playbook: playbooks/02_install.yml
         credentials: [cred_winrm_prod, cred_wsus_corporate]
         execution_environment: windows_patching_ee
@@ -76,7 +76,7 @@
         name: "Windows Patch — Report"
         organization: Systems
         project: Windows_Updates
-        inventory: AWS Inventory
+        inventory: "{{ aap_inventory_name | default('AWS Inventory') }}"
         playbook: playbooks/03_report.yml
         credentials: [cred_smtp_relay, cred_report_host_ssh]
         execution_environment: windows_patching_ee
@@ -91,10 +91,11 @@
               type: text
               default: "mlowcher@redhat.com"
               required: true
+            # Selects the report server out of the inventory attached above.
             # Must be a survey answer, not a group_vars entry: the publish play
             # templates this into its `hosts:` line at parse time, and the
             # controller's own inventory does not read group_vars from this repo.
-            - question_name: Report web host (inventory host or group name)
+            - question_name: Report web host (group or host in AWS Inventory)
               variable: report_web_host
               type: text
               default: "report_hosts"
@@ -114,7 +115,7 @@
         name: "Windows Patch — Set Up Report Host"
         organization: Systems
         project: Windows_Updates
-        inventory: AWS Inventory
+        inventory: "{{ aap_inventory_name | default('AWS Inventory') }}"
         playbook: playbooks/04_setup_report_host.yml
         credentials: [cred_report_host_ssh]
         execution_environment: windows_patching_ee
@@ -123,8 +124,16 @@
         survey_enabled: true
         survey_spec:
           name: Report host options
-          description: How the report site is exposed
+          description: Which host serves reports, and how the site is exposed
           spec:
+            # Same variable the Report template asks for, so both templates
+            # target the same box. Without it this play could only ever reach a
+            # group literally named report_hosts.
+            - question_name: Report web host (group or host in AWS Inventory)
+              variable: report_web_host
+              type: text
+              default: "report_hosts"
+              required: true
             - question_name: Listen port
               variable: report_site_port
               type: integer

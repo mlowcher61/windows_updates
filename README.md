@@ -2,7 +2,7 @@
 
 Automate Windows Server patching from **Ansible Automation Platform (AAP)** and produce a security-posture report that tells Windows administrators exactly where their fleet stands.
 
-> Built for **AAP**, not ansible-core. Uses **certified** Red Hat content (`ansible.windows`, `ansible.controller`). Credentials live in AAP custom credential types — **no vaulted files** in git.
+> Built for **AAP 2.7**, not ansible-core. Uses **certified** Red Hat content (`ansible.windows`, `ansible.controller`). Credentials live in AAP custom credential types — **no vaulted files** in git. The inventory is supplied by your platform (an AWS-backed one by default) — this repo does not ship one for AAP.
 
 **[See an example report →](https://mlowcher61.github.io/windows_updates/example_report.html)**
 
@@ -50,7 +50,8 @@ This repository delivers, end-to-end:
 
 | Component | Minimum | Notes |
 | --- | --- | --- |
-| Ansible Automation Platform | 2.4+ | Config-as-code uses the certified `ansible.controller` collection |
+| Ansible Automation Platform | 2.7 | Config-as-code uses the certified `ansible.controller` collection. `ansible.platform` covers only gateway/identity objects, so job templates and credentials stay on `ansible.controller` |
+| Inventory | Provided by you in AAP | Attached to every job template by name — `AWS Inventory` by default. Not shipped in this repo |
 | Target Windows Server | 2016 / 2019 / 2022 / 2025 | 2012 R2 still works (ESU only — flagged in report) |
 | WinRM | Listener on 5986 (HTTPS) | Kerberos preferred; NTLM supported |
 | Execution Environment | Custom EE in `execution-environment/` | Includes `pywinrm`, `requests-kerberos`, `jmespath` |
@@ -119,15 +120,33 @@ After `deploy_aap.yml` runs, open AAP → Resources → Credentials. Five creden
 > (8530 is the WSUS HTTP default, 8531 HTTPS) if you want it populated for a
 > demo. Nothing will attempt to reach it.
 
-### 3. Adapt the inventory
+### 3. Attach your inventory
 
-Edit `inventories/production/hosts.yml` to list your hosts. Three groups drive behaviour:
+The job templates do **not** create an inventory. They attach one that already
+exists in AAP, by name — `AWS Inventory` by default. To point them at a
+differently-named inventory, set it once at deploy time:
+
+```bash
+ansible-playbook aap/deploy_aap.yml -e aap_inventory_name="My Inventory"
+```
+
+Inside that inventory, create the groups the playbooks target:
 
 | Group | Behaviour |
 | --- | --- |
 | `prod` | Approval gate enforced, install Security + Critical only |
 | `dev` | No approval, install all update categories |
 | `sensitive` | Scan-only — never installs, only reports |
+| `report_hosts` | Linux host that serves the posture report site (see step 4) |
+
+With a dynamic AWS source, populate these with a `keyed_groups` / constructed
+rule on an EC2 tag rather than by hand, so the groups survive instance
+replacement.
+
+> **`inventories/` is for local `ansible-playbook` runs only.** AAP never reads
+> it — the platform writes each job's inventory to `/runner/inventory/`, and
+> Ansible only auto-loads `group_vars/` adjacent to the inventory source or the
+> playbook. Under AAP, per-run settings come from the job template surveys.
 
 ### 4. Set up the report web host
 
@@ -135,22 +154,26 @@ The rendered HTML only exists inside the execution environment's container,
 which AAP destroys when the job ends. To keep reports around, the Report job
 publishes them to a Linux host running nginx.
 
-Add that host to the `report_hosts` group in `inventories/production/hosts.yml`
-(it sits outside `windows_servers` so it never lands in a patch play's host
-pattern), then launch **`Windows Patch — Set Up Report Host`** once. It installs
-nginx, creates `/var/www/patch-reports`, labels the port for SELinux, opens
-firewalld if it is running, and serves the docroot on **port 8888**. The job is
-idempotent, so re-running it just reconciles drift.
+Put that host in the `report_hosts` group inside **AWS Inventory** (keep it out
+of `windows_servers` so it never lands in a patch play's host pattern), then
+launch **`Windows Patch — Set Up Report Host`** once, answering its **Report web
+host** survey question. It installs nginx, creates `/var/www/patch-reports`,
+labels the port for SELinux, opens firewalld if it is running, and serves the
+docroot on **port 8888**. The job is idempotent, so re-running it just
+reconciles drift.
 
 | Setting | Default | Where |
 | --- | --- | --- |
 | Listen port | `8888` | Survey on the Set Up Report Host template |
 | Docroot | `/var/www/patch-reports` | `report_site_root` |
-| Which host serves reports | `report_hosts` (the whole group) | `report_web_host` survey on the Report template |
+| Which host serves reports | `report_hosts` group in AWS Inventory | `report_web_host` survey on **both** report templates |
+| Report host SSH port | `22` | `report_host_ssh_port` extra var |
 | Report runs kept | `4` | `report_site_retention_count` survey on the Report template |
 
-**Choosing the server.** `report_web_host` takes either an inventory host name
-or a group name. Set it to a single host to pin one box:
+**Choosing the server.** `report_web_host` takes either a host name or a group
+name from the attached inventory, and both report templates ask for it — set
+them to the same value. Leave it at `report_hosts` to publish to every member of
+that group, or name a single host to pin one box:
 
 ```bash
 ansible-playbook -i inventories/production/hosts.yml playbooks/03_report.yml \
@@ -160,6 +183,12 @@ ansible-playbook -i inventories/production/hosts.yml playbooks/03_report.yml \
 It must arrive as an extra var — the publish play templates it into its `hosts:`
 line at parse time, and AAP's own inventory does not read `group_vars` from this
 repo, so a `group_vars` entry would work locally and silently do nothing in AAP.
+
+Because the report host is Linux while the rest of the inventory is Windows,
+both report playbooks pin `ansible_connection: ssh` (and port 22) in their play
+vars. Play vars outrank inventory vars, so this holds even when AWS Inventory
+carries winrm defaults on `all`. `ansible_user` is deliberately *not* pinned —
+it comes from the `cred_report_host_ssh` Machine credential.
 
 **Reading the reports.** Two URLs:
 
