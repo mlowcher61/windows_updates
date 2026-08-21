@@ -11,18 +11,40 @@
   ansible.builtin.meta: end_host
   when: scan_only | default(false) | bool
 
+# The survey sends a list; a CLI run may send "SecurityUpdates,Updates". Split
+# the string case so a comma-separated value never reaches win_updates as one
+# category name — that matches nothing and reports success having installed
+# nothing. The inline `if` is used rather than `ternary` on purpose: ternary
+# evaluates both branches, so `| split(',')` would blow up on a list.
+- name: Resolve the effective update categories
+  ansible.builtin.set_fact:
+    install_categories_effective: >-
+      {{ ((override | split(',')) if override is string else override)
+         | map('trim') | select | list
+         or install_categories }}
+  vars:
+    override: "{{ install_categories_override | default([]) }}"
+
+- name: Show which categories this run will use
+  ansible.builtin.debug:
+    msg: >-
+      Categories: {{ install_categories_effective | join(', ') }}
+      ({{ 'survey override' if (install_categories_effective != install_categories)
+          else 'inventory/role default' }})
+  run_once: true
+
 - name: Block — install, reboot, verify
   block:
 
     - name: Re-scan immediately before installing (fresh state)
       ansible.windows.win_updates:
-        category_names: "{{ install_categories }}"
+        category_names: "{{ install_categories_effective }}"
         state: searched
       register: pre_install_scan
 
     - name: Install selected categories
       ansible.windows.win_updates:
-        category_names: "{{ install_categories }}"
+        category_names: "{{ install_categories_effective }}"
         state: installed
         reboot: false
         log_path: 'C:\Windows\Temp\win_updates.log'
@@ -36,7 +58,7 @@
 
     - name: Verification scan (post-install)
       ansible.windows.win_updates:
-        category_names: "{{ install_categories }}"
+        category_names: "{{ install_categories_effective }}"
         state: searched
       register: post_install_scan
 
@@ -61,7 +83,7 @@
           hostname: "{{ inventory_hostname }}"
           phase: install
           install_time: "{{ ansible_date_time.iso8601 }}"
-          attempted_categories: "{{ install_categories }}"
+          attempted_categories: "{{ install_categories_effective }}"
           installed: "{{ install_result.updates | default({}) | dict2items | map(attribute='value') | selectattr('installed', 'equalto', true) | list }}"
           installed_count: "{{ (install_result.updates | default({}) | dict2items | map(attribute='value') | selectattr('installed', 'equalto', true) | list) | length }}"
           failed: "{{ install_result.updates | default({}) | dict2items | map(attribute='value') | selectattr('installed', 'equalto', false) | list }}"

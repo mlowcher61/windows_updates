@@ -62,9 +62,29 @@
               type: text
               default: "20%"
               required: false
-            - question_name: Override categories (comma-separated)
+            # Fixed list, not free text: win_updates passes an unrecognised
+            # category through verbatim, matches nothing, and reports success
+            # having installed nothing. These are the only names it resolves —
+            # the first seven are mapped from camelCase to the spaced strings
+            # Windows Update reports; the rest match as-is.
+            # Leave everything unselected to keep the inventory/role default.
+            - question_name: Override categories (leave empty for the group default)
               variable: install_categories_override
-              type: text
+              type: multiselect
+              choices:
+                - SecurityUpdates
+                - CriticalUpdates
+                - UpdateRollups
+                - DefinitionUpdates
+                - DeveloperKits
+                - FeaturePacks
+                - ServicePacks
+                - Updates
+                - Upgrades
+                - Application
+                - Connectors
+                - Guidance
+                - Tools
               default: ""
               required: false
 

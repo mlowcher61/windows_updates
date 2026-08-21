@@ -6,6 +6,21 @@ install_categories:
   - SecurityUpdates
   - CriticalUpdates
 
+# Per-run override from the Install job template's survey (multiselect, so it
+# arrives as a list; a comma-separated string is also accepted for CLI runs).
+# Empty = fall back to install_categories above, as resolved from group_vars.
+# It REPLACES that list rather than adding to it.
+#
+# Values must be names ansible.windows.win_updates recognises. Its PowerShell
+# side maps seven camelCase names to the spaced strings Windows Update actually
+# reports (SecurityUpdates -> 'Security Updates', and likewise CriticalUpdates,
+# UpdateRollups, DefinitionUpdates, DeveloperKits, FeaturePacks, ServicePacks).
+# Single-word names (Updates, Upgrades, Application, Connectors, Guidance,
+# Tools) pass through unchanged and match directly. Anything else is passed
+# through verbatim, matches no category, and silently installs nothing — which
+# is why the survey is a fixed multiselect rather than free text.
+install_categories_override: []
+
 reboot_timeout: 1800
 
 # When true, role exits without installing. Used by inventories/sensitive group.

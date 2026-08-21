@@ -261,12 +261,41 @@ See [docs/REPORT_METRICS.md](docs/REPORT_METRICS.md) for the exact scoring formu
 | --- | --- |
 | Posture grade weights | `roles/windows_patch_report/defaults/main.yml` |
 | ISM compliance thresholds (48hr / 14d) | `roles/windows_patch_report/defaults/main.yml` |
-| Update categories per environment | `inventories/production/group_vars/<group>.yml` |
+| Update categories per environment | `inventories/production/group_vars/<group>.yml` (local runs) / `install_categories` |
+| Update categories for a single run | **Override categories** multiselect on the Install job template |
 | OS lifecycle dates | `files/os_lifecycle.yml` |
 | Install batch size (serial %) | `inventories/production/group_vars/<group>.yml` |
 | Report email recipients | Survey on the Report job template in AAP |
 | Top Risks ranking strategy | `filter_plugins/posture.py :: top_risks_ranking()` |
 | Number of hosts in Top Risks | `top_risks_count` in `roles/windows_patch_report/defaults/main.yml` |
+
+### Overriding update categories for one run
+
+The Install job template's **Override categories** question is a multiselect.
+Leave everything unselected and the run uses `install_categories` as resolved
+from the role default (`SecurityUpdates` + `CriticalUpdates`) or the inventory
+group. Select anything and it **replaces** that list for the run — it does not
+add to it. The job logs which of the two it used before installing anything.
+
+The choices are fixed rather than free text for a reason: `win_updates` passes
+an unrecognised category name through verbatim, matches no update, and then
+reports success having installed nothing. Only these names resolve —
+
+| Mapped from camelCase | Matched as-is |
+| --- | --- |
+| `SecurityUpdates`, `CriticalUpdates`, `UpdateRollups`, `DefinitionUpdates`, `DeveloperKits`, `FeaturePacks`, `ServicePacks` | `Updates`, `Upgrades`, `Application`, `Connectors`, `Guidance`, `Tools` |
+
+The left column is converted to the spaced strings Windows Update actually
+reports (`SecurityUpdates` → `Security Updates`) by the module's PowerShell
+side; the right column needs no conversion. This is also why the scan summary
+in `playbooks/01_scan.yml` filters on `'Security Updates'` **with** a space
+while the category inputs have none.
+
+On the CLI the same variable accepts a list or a comma-separated string:
+
+```bash
+ansible-playbook playbooks/02_install.yml -e install_categories_override=Updates,Upgrades
+```
 
 ## Extending
 
