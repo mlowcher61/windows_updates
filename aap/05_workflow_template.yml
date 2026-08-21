@@ -1,112 +1,137 @@
 ---
+# Builds the "Windows Patch Cycle" workflow graph.
+#
+# WHY THIS IS SPLIT INTO ONE TASK PER NODE
+# ----------------------------------------
+# The obvious way to write this is a single ansible.controller.workflow_job_template
+# call carrying a workflow_nodes list. That works, but it costs roughly 40 API
+# round-trips because the module makes two passes over the graph:
+# create_workflow_nodes() looks up every node, then create_workflow_nodes_association()
+# looks all of them up AGAIN, and within that second pass it calls
+# create_or_update_if_needed() once per association TYPE with a cumulative dict --
+# so a node with success_nodes + failure_nodes reconciles its associations three
+# times, not two.
+#
+# ansible.controller.workflow_job_template_node builds its association list once
+# and issues a single create/update per node, so the double lookups and the
+# repeated reconciliation both go away (~40 calls -> ~24).
+#
+# NODE ORDER IS LOAD-BEARING. The node module resolves success_nodes /
+# failure_nodes / always_nodes by identifier and calls fail_json if a referenced
+# node does not exist yet ("Could not find ... entry with name"). Listing the
+# nodes in REVERSE topological order -- leaf first, root last -- means every
+# child already exists by the time its parent names it, which is what lets this
+# run as a single pass. If you add a node, insert it AFTER all of its children.
+#
+# Graph:  scan ──success──> approval ──approve──> install ──always──┐
+#           │                  │                                    │
+#           └──failure─────────┴──deny/timeout────────────────────┴──> report
 - name: Create workflow template
   hosts: localhost
   gather_facts: false
+  vars:
+    wf_name: "Windows Patch Cycle"
+    # `organization` is deliberately NOT passed to the node tasks below: the
+    # node module only uses it to disambiguate the workflow lookup, and
+    # supplying it costs an extra resolve_name_to_id call per node. The
+    # workflow name is unique, so the lookup is unambiguous without it.
   module_defaults:
     group/ansible.controller.controller:
       # Host and auth are injected by the Red Hat Ansible Automation Platform
       # credential attached to the job template (CONTROLLER_HOST /
       # CONTROLLER_USERNAME / CONTROLLER_PASSWORD).
       validate_certs: "{{ aap_validate_certs | default(false) }}"
-      # Without this, the collection's HTTP calls have no ceiling: a request
-      # that stalls mid-run blocks the job indefinitely instead of failing.
-      # Raise it with -e aap_request_timeout=<seconds> for very large runs.
+      # Bounds each individual HTTP call. Note this is per-request, not per-task.
       request_timeout: "{{ aap_request_timeout | default(60) }}"
   tasks:
     - name: Workflow — Windows Patch Cycle
       ansible.controller.workflow_job_template:
-        name: "Windows Patch Cycle"
+        name: "{{ wf_name }}"
         organization: Default
         inventory: "{{ aap_inventory_name | default('AWS Inventory') }}"
         ask_variables_on_launch: true
         ask_inventory_on_launch: true
         extra_vars:
           require_approval: true
-        # One-shot graph reset. The module only reconciles association types
-        # that appear in this file (controller_api.py :: create_if_needed loops
-        # over the associations dict it is handed), so a deploy that fails
-        # partway through can leave stale edges behind that block every
-        # subsequent run — and removing the edge from this file makes it
-        # invisible to the module rather than deleting it.
+        # One-shot graph reset. Nodes are no longer declared on this module, so
+        # it only ever creates/updates the template itself -- except here, where
+        # destroy_current_nodes still deletes every node so the tasks below
+        # rebuild the graph from scratch.
         #
-        # Re-run with -e workflow_rebuild=true to delete all nodes and rebuild
-        # the graph from scratch. Left false by default so normal deploys stay
+        # Re-run with -e workflow_rebuild=true when a partial deploy has left
+        # stale edges behind. Left false by default so normal deploys stay
         # idempotent.
         destroy_current_nodes: "{{ workflow_rebuild | default(false) | bool }}"
-        # Graph:  scan ──success──> approval ──approve──> install ──always──┐
-        #           │                  │                                    │
-        #           └──failure─────────┴──deny/timeout────────────────────┴──> report
-        #
-        # IMPORTANT: edge definitions (success_nodes / failure_nodes /
-        # always_nodes) MUST be nested under `related:`. The module reads them
-        # from workflow_node['related'] and silently ignores them if they are
-        # placed at the top level of the node — which leaves every node
-        # parentless, and AAP launches all parentless (root) nodes at once.
-        #
-        # ALSO IMPORTANT: a given parent→child pair may carry only ONE edge
-        # type. Listing the same child under both success_nodes and
-        # failure_nodes of one parent makes the API reject the second
-        # association with "Relationship not allowed." Use always_nodes when a
-        # child should run regardless of the parent's outcome.
-        workflow_nodes:
-          - identifier: node_scan
-            unified_job_template:
-              name: "Windows Patch — Scan"
-              type: job_template
-            related:
-              success_nodes:
-                - identifier: node_approval
-              failure_nodes:
-                - identifier: node_report
 
-          - identifier: node_approval
-            unified_job_template:
-              type: workflow_approval
-              name: "Proceed with patch install?"
-              description: |
-                Scan complete. Review the "Fleet scan summary" output on the
-                Scan node before deciding.
-                Approve to proceed with installation.
-                Deny to skip installation and go straight to the report.
-              timeout: 14400
-            related:
-              # Approval denied or timed out follows the failure edge.
-              success_nodes:
-                - identifier: node_install
-              failure_nodes:
-                - identifier: node_report
+    # ---- nodes, leaf first (see NODE ORDER above) ---------------------------
 
-          - identifier: node_install
-            unified_job_template:
-              name: "Windows Patch — Install"
-              type: job_template
-            related:
-              # always_nodes, not success+failure: the report must run whether
-              # the install succeeded or failed, and the same parent→child pair
-              # cannot carry two edge types. Note that always_nodes is mutually
-              # exclusive with success_nodes/failure_nodes on the same parent —
-              # adding either one back here would be rejected.
-              always_nodes:
-                - identifier: node_report
+    - name: Node — report
+      ansible.controller.workflow_job_template_node:
+        workflow_job_template: "{{ wf_name }}"
+        identifier: node_report
+        unified_job_template: "Windows Patch — Report"
+        # all_parents_must_converge is intentionally omitted rather than set to
+        # false. node_report has three possible parents (scan-fail,
+        # approval-deny, install) and must run when ANY path reaches it, which
+        # is exactly the API's default. Setting it explicitly would also be a
+        # no-op: the module copies fields with `if field_val:`, so a literal
+        # false is dropped before the request is built.
 
-          - identifier: node_report
-            unified_job_template:
-              name: "Windows Patch — Report"
-              type: job_template
-            # node_report has three possible parents (scan-fail, approval-deny,
-            # install). false = "run when ANY parent path reaches me", which is
-            # what we want since only one of those paths ever fires per run.
-            # Setting this to true would mean the report never runs at all.
-            all_parents_must_converge: false
+    - name: Node — install
+      ansible.controller.workflow_job_template_node:
+        workflow_job_template: "{{ wf_name }}"
+        identifier: node_install
+        unified_job_template: "Windows Patch — Install"
+        # always_nodes, not success + failure: the report must run whether the
+        # install succeeded or failed, and a given parent→child pair may carry
+        # only ONE edge type -- the API rejects the second with "Relationship
+        # not allowed."
+        always_nodes:
+          - node_report
 
-          # Tombstone. This node used to exist as a duplicate of node_report on
-          # the scan-failure path; node_report now serves that path directly.
-          # destroy_current_nodes is false, so simply deleting the entry above
-          # would strand the node in AAP as an orphan root that fires on every
-          # run. This removes it. Safe to keep permanently — once the node is
-          # gone the module finds nothing to delete and reports no change.
-          - identifier: node_report_after_failure
-            unified_job_template:
-              name: "Windows Patch — Report"
-              type: job_template
-            state: absent
+    - name: Node — approval gate
+      ansible.controller.workflow_job_template_node:
+        workflow_job_template: "{{ wf_name }}"
+        identifier: node_approval
+        # approval_node and unified_job_template are mutually exclusive. Using
+        # approval_node makes the module create the approval template for us.
+        approval_node:
+          name: "Proceed with patch install?"
+          description: |
+            Scan complete. Review the "Fleet scan summary" output on the
+            Scan node before deciding.
+            Approve to proceed with installation.
+            Deny to skip installation and go straight to the report.
+          timeout: 14400
+        # Denied or timed-out approvals follow the failure edge.
+        success_nodes:
+          - node_install
+        failure_nodes:
+          - node_report
+
+    - name: Node — scan
+      ansible.controller.workflow_job_template_node:
+        workflow_job_template: "{{ wf_name }}"
+        identifier: node_scan
+        unified_job_template: "Windows Patch — Scan"
+        success_nodes:
+          - node_approval
+        failure_nodes:
+          - node_report
+
+    # ---- one-time cleanup ---------------------------------------------------
+
+    # node_report_after_failure used to duplicate node_report on the
+    # scan-failure path; node_report now serves that path directly. Removing the
+    # entry alone would strand the node in AAP as an orphan root that fires on
+    # every run, so it has to be deleted explicitly.
+    #
+    # Gated because it costs API calls on every deploy to delete something that
+    # is already gone. Run once against any environment deployed before this
+    # change:  -e workflow_prune=true
+    - name: Prune the retired node_report_after_failure node
+      ansible.controller.workflow_job_template_node:
+        workflow_job_template: "{{ wf_name }}"
+        identifier: node_report_after_failure
+        state: absent
+      when: workflow_prune | default(false) | bool

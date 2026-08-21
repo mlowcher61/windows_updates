@@ -130,6 +130,21 @@ differently-named inventory, set it once at deploy time:
 ansible-playbook aap/deploy_aap.yml -e aap_inventory_name="My Inventory"
 ```
 
+### Upgrading an environment deployed before the workflow split
+
+The workflow graph is now built one node at a time rather than as a single
+`workflow_nodes` list, which cuts the deploy from roughly 40 controller API
+calls to roughly 24. Existing graphs are picked up and updated in place — node
+identifiers did not change — so no action is needed for the graph itself.
+
+One-time only: environments deployed before this change may still carry the
+retired `node_report_after_failure` node. Deleting it costs API calls on every
+deploy, so the prune task is gated. Run it once:
+
+```bash
+ansible-playbook aap/deploy_aap.yml -e workflow_prune=true
+```
+
 Inside that inventory, create the groups the playbooks target:
 
 | Group | Behaviour |
@@ -311,10 +326,11 @@ ansible-playbook playbooks/02_install.yml -e install_categories_override=Updates
 | `win_updates` hangs | Windows Update service paused | `Get-Service wuauserv` on host; restart if Stopped |
 | `No patch facts available to report on` / Report shows 0 hosts | Under a workflow, the Report job runs in its own container with its own `AWX_PRIVATE_DATA_DIR`, so the `.scan.json` / `.install.json` files written by earlier job templates are already destroyed. Facts must travel as workflow artifacts, not on disk | Confirm the Scan node's `Publish eligible host list to downstream workflow nodes` task ran, and that the Report job template has `ask_variables_on_launch: true` so artifacts are accepted. `patch_facts_dir` is only used for standalone runs of `99_full_cycle.yml`, where all three plays share one control node |
 | ISM SLA always failing | First run has no history | Posture computes from current scan only — accurate after 2+ cycles |
-| All workflow nodes launch simultaneously | Node edges declared at the top level of a `workflow_nodes` entry instead of under `related:` — the module silently ignores them, leaving every node parentless, and AAP launches all parentless nodes at once | In `aap/05_workflow_template.yml`, nest `success_nodes` / `failure_nodes` under `related:` and write targets as `- identifier: <name>` dicts, not bare strings |
-| `Failed to associate item {'Error': 'Relationship not allowed.'}` when deploying the workflow | The same child listed under both `success_nodes` and `failure_nodes` of one parent. A parent→child pair may carry only one edge type, and the module submits both associations together | Use `always_nodes` for a child that should run regardless of the parent's outcome. It is mutually exclusive with `success_nodes`/`failure_nodes` on that same parent |
-| Deleted a node from the CaC file but it still runs | `destroy_current_nodes` defaults to `false`, so removing an entry orphans the node in AAP rather than deleting it | Keep the entry and add `state: absent` (see the `node_report_after_failure` tombstone), or set `destroy_current_nodes: true` to rebuild the graph from scratch on every deploy |
-| Report node never runs | `all_parents_must_converge: true` on a node whose parents are mutually exclusive paths | Leave it `false` — the report has three possible parents (scan-fail, approval-deny, install) and only one path fires per run |
+| `Could not find success_nodes entry with name <identifier>` when deploying the workflow | Node tasks in `aap/05_workflow_template.yml` run in reverse topological order (leaf first) so every child exists before a parent names it. A new node was added above its children | Move the task so it sits AFTER every node it references |
+| All workflow nodes launch simultaneously | A node has no parent naming it, so AAP treats it as a root and launches every root at once | In `aap/05_workflow_template.yml`, confirm some parent task lists that node under `success_nodes` / `failure_nodes` / `always_nodes`. Those are lists of bare identifiers on the `workflow_job_template_node` task |
+| `Failed to associate item {'Error': 'Relationship not allowed.'}` when deploying the workflow | The same child listed under both `success_nodes` and `failure_nodes` of one parent. A parent→child pair may carry only one edge type | Use `always_nodes` for a child that should run regardless of the parent's outcome. It is mutually exclusive with `success_nodes`/`failure_nodes` on that same parent |
+| Deleted a node from the CaC file but it still runs | Deleting the task orphans the node in AAP rather than removing it | Add a `workflow_job_template_node` task with `state: absent` for that identifier (see the `node_report_after_failure` prune task), or redeploy once with `-e workflow_rebuild=true` to delete every node and rebuild the graph |
+| Report node never runs | `all_parents_must_converge: true` on a node whose parents are mutually exclusive paths | Leave it unset. The API default is `false`, which is what the report needs — it has three possible parents (scan-fail, approval-deny, install) and only one path fires per run |
 | Install patched hosts you expected to be skipped | `patch_eligible_hosts` artifact not reaching the Install node | Confirm the Scan job's `set_stats` task ran and that the Install job template has `ask_variables_on_launch: true` |
 | Approval gate appears on every run, including dev | Expected — the approval node is unconditional. `require_approval` is set in group_vars but nothing reads it | See the note in [Known gaps](#known-gaps) |
 
